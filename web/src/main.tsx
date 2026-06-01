@@ -95,8 +95,68 @@ type ResiduosResultado = {
   totaisPorMaterial: { papelT: number; plasticoT: number; vidroT: number; metalT: number };
 };
 
+type ReportCellKind = "text" | "number" | "select";
+
+type ReportColumn<T extends Record<string, string>> = {
+  key: keyof T;
+  label: string;
+  kind?: ReportCellKind;
+  options?: string[];
+  readOnly?: boolean;
+};
+
+type EteReportRow = {
+  nomeEte: string;
+  localidade: string;
+  tipoTratamento: string;
+  populacaoAtendida: string;
+  vazaoMedia: string;
+  dboAfluente: string;
+  dboEfluente: string;
+  eficienciaRemocao: string;
+};
+
+type ColetaReportRow = {
+  razaoSocial: string;
+  cnpj: string;
+  catadores: string;
+  cadastroSinir: string;
+  material: string;
+  janeiro: string;
+  fevereiro: string;
+  marco: string;
+  abril: string;
+  maio: string;
+  junho: string;
+  julho: string;
+  agosto: string;
+  setembro: string;
+  outubro: string;
+  novembro: string;
+  dezembro: string;
+};
+
+type FundoReportRow = {
+  saldoInicial: string;
+  repassesRecebidos: string;
+  despesasLiquidadas: string;
+  saldoFinal: string;
+  acaoAmbiental: string;
+  documentoComprobatorio: string;
+};
+
+type UcReportRow = {
+  unidadeConservacao: string;
+  atoCriacao: string;
+  infraestruturaSede: string;
+  conselhoGestor: string;
+  planoManejo: string;
+  observacoes: string;
+};
+
 const cicloId = 1;
 const draftPrefix = "icms-ni-draft";
+const reportPrefix = "icms-ni-report";
 
 const digitalForms: DigitalFormConfig[] = [
   {
@@ -668,6 +728,44 @@ function loadDraft(formId: string): DraftRecord {
   }
 }
 
+function reportStorageKey(reportId: string) {
+  return `${reportPrefix}:${reportId}`;
+}
+
+function loadReportRows<T extends Record<string, string>>(reportId: string, fallback: T[]): T[] {
+  try {
+    return JSON.parse(localStorage.getItem(reportStorageKey(reportId)) || "") as T[];
+  } catch {
+    return fallback;
+  }
+}
+
+function saveReportRows<T extends Record<string, string>>(reportId: string, rows: T[]) {
+  localStorage.setItem(reportStorageKey(reportId), JSON.stringify(rows));
+}
+
+function calculateDboEfficiency(afluente: string, efluente: string) {
+  const inValue = Number(afluente);
+  const outValue = Number(efluente);
+  if (!Number.isFinite(inValue) || inValue <= 0 || !Number.isFinite(outValue) || outValue < 0) return "";
+  return Math.max(0, Math.min(100, ((inValue - outValue) / inValue) * 100)).toFixed(2);
+}
+
+const reportMonths: Array<keyof ColetaReportRow> = [
+  "janeiro",
+  "fevereiro",
+  "marco",
+  "abril",
+  "maio",
+  "junho",
+  "julho",
+  "agosto",
+  "setembro",
+  "outubro",
+  "novembro",
+  "dezembro",
+];
+
 function getComplianceItemStatus(item: ComplianceItem) {
   if (item.requiredFields?.length) {
     return item.requiredFields.every((group) => {
@@ -1114,6 +1212,298 @@ function UcPanel() {
   );
 }
 
+function ReportTable<T extends Record<string, string>>(props: {
+  columns: ReportColumn<T>[];
+  rows: T[];
+  onChange: (rows: T[]) => void;
+}) {
+  function updateCell(rowIndex: number, key: keyof T, value: string) {
+    const nextRows = props.rows.map((row, index) => {
+      if (index !== rowIndex) return row;
+      return { ...row, [key]: value };
+    });
+    props.onChange(nextRows);
+  }
+
+  return (
+    <div className="official-table-wrap">
+      <table className="official-table">
+        <thead>
+          <tr>{props.columns.map((column) => <th key={String(column.key)}>{column.label}</th>)}</tr>
+        </thead>
+        <tbody>
+          {props.rows.map((row, rowIndex) => (
+            <tr key={rowIndex}>
+              {props.columns.map((column) => (
+                <td key={String(column.key)}>
+                  {column.readOnly ? (
+                    <strong>{row[column.key] || "-"}</strong>
+                  ) : column.kind === "select" ? (
+                    <select value={row[column.key]} onChange={(event) => updateCell(rowIndex, column.key, event.target.value)}>
+                      <option value="">Selecione</option>
+                      {column.options?.map((option) => <option key={option} value={option}>{option}</option>)}
+                    </select>
+                  ) : (
+                    <input
+                      type={column.kind === "number" ? "number" : "text"}
+                      value={row[column.key]}
+                      onChange={(event) => updateCell(rowIndex, column.key, event.target.value)}
+                    />
+                  )}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function OfficialReportCard<T extends Record<string, string>>(props: {
+  reportId: string;
+  title: string;
+  subtitle: string;
+  legalReference: string;
+  columns: ReportColumn<T>[];
+  rows: T[];
+  onChange: (rows: T[]) => void;
+  blankRow: T;
+}) {
+  function addRow() {
+    props.onChange([...props.rows, props.blankRow]);
+  }
+
+  function printReport() {
+    document.body.dataset.printReport = props.reportId;
+    window.print();
+    window.setTimeout(() => {
+      delete document.body.dataset.printReport;
+    }, 300);
+  }
+
+  return (
+    <article className="official-report" data-report-id={props.reportId}>
+      <div className="report-letterhead">
+        <div>
+          <span>Prefeitura Municipal de Nova Iguacu</span>
+          <strong>Secretaria Municipal de Meio Ambiente</strong>
+          <p>ICMS Ecologico do Estado do Rio de Janeiro - Ciclo {new Date().getFullYear()}</p>
+        </div>
+        <div className="report-stamp">INEA/CEPERJ</div>
+      </div>
+
+      <div className="digital-form-header">
+        <div>
+          <p>{props.legalReference}</p>
+          <h3>{props.title}</h3>
+          <span>{props.subtitle}</span>
+        </div>
+        <Badge tone="blue">Modelo editavel</Badge>
+      </div>
+
+      <ReportTable columns={props.columns} rows={props.rows} onChange={props.onChange} />
+
+      <div className="signature-block">
+        <div>
+          <span>Responsavel tecnico</span>
+          <strong>Nome, matricula e assinatura</strong>
+        </div>
+        <div>
+          <span>Secretario Municipal de Meio Ambiente</span>
+          <strong>Assinatura e carimbo</strong>
+        </div>
+      </div>
+
+      <div className="form-actions">
+        <button type="button" onClick={addRow}>Adicionar linha</button>
+        <button type="button" onClick={printReport}>Gerar Relatorio Oficial para PDF</button>
+      </div>
+    </article>
+  );
+}
+
+const eteBlankRow: EteReportRow = {
+  nomeEte: "",
+  localidade: "",
+  tipoTratamento: "",
+  populacaoAtendida: "",
+  vazaoMedia: "",
+  dboAfluente: "",
+  dboEfluente: "",
+  eficienciaRemocao: "",
+};
+
+const coletaBlankRow: ColetaReportRow = {
+  razaoSocial: "",
+  cnpj: "",
+  catadores: "",
+  cadastroSinir: "",
+  material: "Papel/Papelao",
+  janeiro: "",
+  fevereiro: "",
+  marco: "",
+  abril: "",
+  maio: "",
+  junho: "",
+  julho: "",
+  agosto: "",
+  setembro: "",
+  outubro: "",
+  novembro: "",
+  dezembro: "",
+};
+
+const fundoBlankRow: FundoReportRow = {
+  saldoInicial: "",
+  repassesRecebidos: "",
+  despesasLiquidadas: "",
+  saldoFinal: "",
+  acaoAmbiental: "",
+  documentoComprobatorio: "",
+};
+
+const ucBlankRow: UcReportRow = {
+  unidadeConservacao: "",
+  atoCriacao: "",
+  infraestruturaSede: "",
+  conselhoGestor: "",
+  planoManejo: "",
+  observacoes: "",
+};
+
+function ReportModelsPanel() {
+  const [eteRows, setEteRows] = useState<EteReportRow[]>(() => loadReportRows("ies-ete-autocontrole", [eteBlankRow]));
+  const [coletaRows, setColetaRows] = useState<ColetaReportRow[]>(() => loadReportRows("irs-coleta-seletiva", [
+    { ...coletaBlankRow, material: "Papel/Papelao" },
+    { ...coletaBlankRow, material: "Plastico" },
+    { ...coletaBlankRow, material: "Vidro" },
+    { ...coletaBlankRow, material: "Metal" },
+  ]));
+  const [fundoRows, setFundoRows] = useState<FundoReportRow[]>(() => loadReportRows("iqsmma-fmma-regularidade", [fundoBlankRow]));
+  const [ucRows, setUcRows] = useState<UcReportRow[]>(() => loadReportRows("iea-qualidade-gestao-uc", [ucBlankRow]));
+
+  function updateEteRows(rows: EteReportRow[]) {
+    const calculated = rows.map((row) => ({
+      ...row,
+      eficienciaRemocao: calculateDboEfficiency(row.dboAfluente, row.dboEfluente),
+    }));
+    setEteRows(calculated);
+    saveReportRows("ies-ete-autocontrole", calculated);
+  }
+
+  function updateColetaRows(rows: ColetaReportRow[]) {
+    setColetaRows(rows);
+    saveReportRows("irs-coleta-seletiva", rows);
+  }
+
+  function updateFundoRows(rows: FundoReportRow[]) {
+    setFundoRows(rows);
+    saveReportRows("iqsmma-fmma-regularidade", rows);
+  }
+
+  function updateUcRows(rows: UcReportRow[]) {
+    setUcRows(rows);
+    saveReportRows("iea-qualidade-gestao-uc", rows);
+  }
+
+  const eteColumns: ReportColumn<EteReportRow>[] = [
+    { key: "nomeEte", label: "Nome da ETE" },
+    { key: "localidade", label: "Localidade" },
+    { key: "tipoTratamento", label: "Tipo de Tratamento", kind: "select", options: ["Primario", "Secundario", "Terciario", "Emissario Submarino"] },
+    { key: "populacaoAtendida", label: "Populacao Atendida", kind: "number" },
+    { key: "vazaoMedia", label: "Vazao Media (m3/dia)", kind: "number" },
+    { key: "dboAfluente", label: "DBO Afluente (mg/L)", kind: "number" },
+    { key: "dboEfluente", label: "DBO Efluente (mg/L)", kind: "number" },
+    { key: "eficienciaRemocao", label: "Eficiencia de Remocao (%)", readOnly: true },
+  ];
+
+  const coletaColumns: ReportColumn<ColetaReportRow>[] = [
+    { key: "razaoSocial", label: "Razao Social da Associacao" },
+    { key: "cnpj", label: "CNPJ" },
+    { key: "catadores", label: "No. Catadores", kind: "number" },
+    { key: "cadastroSinir", label: "Cadastro SINIR" },
+    { key: "material", label: "Material", kind: "select", options: ["Papel/Papelao", "Plastico", "Vidro", "Metal"] },
+    ...reportMonths.map((month) => ({ key: month, label: String(month).charAt(0).toUpperCase() + String(month).slice(1), kind: "number" as const })),
+  ];
+
+  const fundoColumns: ReportColumn<FundoReportRow>[] = [
+    { key: "saldoInicial", label: "Saldo Inicial (R$)", kind: "number" },
+    { key: "repassesRecebidos", label: "Repasses ICMS Ecologico Recebidos (R$)", kind: "number" },
+    { key: "despesasLiquidadas", label: "Despesas Liquidadas em Conservacao Ambiental (R$)", kind: "number" },
+    { key: "saldoFinal", label: "Saldo Final do Exercicio (R$)", kind: "number" },
+    { key: "acaoAmbiental", label: "Acao Ambiental Executada" },
+    { key: "documentoComprobatorio", label: "Documento Comprobatorio" },
+  ];
+
+  const ucColumns: ReportColumn<UcReportRow>[] = [
+    { key: "unidadeConservacao", label: "Unidade de Conservacao" },
+    { key: "atoCriacao", label: "Status do Ato de Criacao", kind: "select", options: ["Nao comprovado", "Comprovado sem memorial", "Comprovado com memorial e mapa"] },
+    { key: "infraestruturaSede", label: "Infraestrutura/Sede", kind: "select", options: ["Inexistente", "Parcial", "Comprovada"] },
+    { key: "conselhoGestor", label: "Conselho Gestor Paritario e Ativo", kind: "select", options: ["Inexistente", "Instituido sem reunioes", "Ativo com reunioes comprovadas"] },
+    { key: "planoManejo", label: "Implementacao do Plano de Manejo", kind: "select", options: ["Nao possui", "Desatualizado", "Atualizado e em implementacao"] },
+    { key: "observacoes", label: "Observacoes/Evidencias" },
+  ];
+
+  return (
+    <section className="panel">
+      <div className="section-header">
+        <div>
+          <h2>Modelos de Relatorios</h2>
+          <p>Anexos operacionais editaveis para impressao, assinatura e envio ao INEA/CEPERJ.</p>
+        </div>
+        <button onClick={() => window.print()}>Imprimir todos</button>
+      </div>
+
+      <div className="report-stack">
+        <OfficialReportCard
+          reportId="ies-ete-autocontrole"
+          title="Anexo IES - Quadro de Autocontrole de ETEs"
+          subtitle="Tabela de comprovacao semestral/anual da operacao, vazao, DBO e eficiencia de remocao."
+          legalReference="Criterio Esgoto - IES"
+          columns={eteColumns}
+          rows={eteRows}
+          onChange={updateEteRows}
+          blankRow={eteBlankRow}
+        />
+
+        <OfficialReportCard
+          reportId="irs-coleta-seletiva"
+          title="Anexo IRS - Formulario de Habilitacao de Coleta Seletiva"
+          subtitle="Quadro de comprovacao de materiais reciclaveis comercializados por cooperativas ou associacoes."
+          legalReference="Criterio Residuos Solidos - IRS"
+          columns={coletaColumns}
+          rows={coletaRows}
+          onChange={updateColetaRows}
+          blankRow={coletaBlankRow}
+        />
+
+        <OfficialReportCard
+          reportId="iqsmma-fmma-regularidade"
+          title="Anexo IQSMMA - Regularidade do Fundo Municipal de Meio Ambiente"
+          subtitle="Consolidacao financeira do FMMA: saldo inicial, repasses, despesas liquidadas e saldo final."
+          legalReference="Criterio Governanca Ambiental - IQSMMA"
+          columns={fundoColumns}
+          rows={fundoRows}
+          onChange={updateFundoRows}
+          blankRow={fundoBlankRow}
+        />
+
+        <OfficialReportCard
+          reportId="iea-qualidade-gestao-uc"
+          title="Anexo IEA - Ficha de Avaliacao de Qualidade de Gestao da UC"
+          subtitle="Questionario de evidencias para qualidade de gestao, conselho, infraestrutura e Plano de Manejo."
+          legalReference="Criterio Unidades de Conservacao - IEA"
+          columns={ucColumns}
+          rows={ucRows}
+          onChange={updateUcRows}
+          blankRow={ucBlankRow}
+        />
+      </div>
+    </section>
+  );
+}
+
 function CompliancePanel() {
   const [tick, setTick] = useState(0);
   const firstItem = complianceSections[0].items[0];
@@ -1260,6 +1650,7 @@ function App() {
   const [tab, setTab] = useState("residuos");
   const tabs = [
     ["conformidade", "Central de Conformidade"],
+    ["modelos", "Modelos de Relatorios"],
     ["residuos", "Residuos"],
     ["esgoto", "Esgoto"],
     ["uc", "UCs e Mananciais"],
@@ -1282,6 +1673,7 @@ function App() {
         {tabs.map(([id, label]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>{label}</button>)}
       </nav>
       {tab === "conformidade" && <CompliancePanel />}
+      {tab === "modelos" && <ReportModelsPanel />}
       {tab === "esgoto" && <EsgotoPanel />}
       {tab === "residuos" && <ResiduosPanel />}
       {tab === "uc" && <UcPanel />}
