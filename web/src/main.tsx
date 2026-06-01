@@ -3,6 +3,28 @@ import { createRoot } from "react-dom/client";
 import "./styles.css";
 
 type Status = "idle" | "loading" | "ready" | "error";
+type FormStatus = "nao_iniciado" | "em_preenchimento" | "pendente_documento" | "completo";
+type FieldKind = "text" | "number" | "date" | "select" | "textarea" | "file" | "checkbox";
+
+type FieldConfig = {
+  name: string;
+  label: string;
+  kind: FieldKind;
+  required?: boolean;
+  options?: string[];
+  placeholder?: string;
+};
+
+type DigitalFormConfig = {
+  id: string;
+  module: string;
+  title: string;
+  description: string;
+  spreadsheet?: boolean;
+  fields: FieldConfig[];
+};
+
+type DraftRecord = Record<string, string | boolean>;
 
 type EsgotoResultado = {
   pontuacaoFinalMunicipal: number;
@@ -49,6 +71,97 @@ type ResiduosResultado = {
 };
 
 const cicloId = 1;
+const draftPrefix = "icms-ni-draft";
+
+const digitalForms: DigitalFormConfig[] = [
+  {
+    id: "residuos_destinacao_final",
+    module: "residuos",
+    title: "Destinacao Final de Residuos Solidos",
+    description:
+      "Comprova tipo de destinacao, massa de RSU encaminhada, licenciamento do destino, tratamento de percolado e evidencias documentais.",
+    spreadsheet: true,
+    fields: [
+      { name: "tipoDestinacao", label: "Tipo de destinacao final", kind: "select", required: true, options: ["Aterro sanitario", "Aterro controlado", "Lixao/vazadouro", "Unidade de transbordo", "Outro"] },
+      { name: "unidadeDestino", label: "Nome da unidade de destino", kind: "text", required: true, placeholder: "Ex.: CTR / Aterro contratado" },
+      { name: "municipioDestino", label: "Municipio de destino", kind: "text", required: true },
+      { name: "operador", label: "Operador responsavel", kind: "text", required: true },
+      { name: "licencaAmbiental", label: "Numero da licenca ambiental", kind: "text", required: true },
+      { name: "validadeLicenca", label: "Validade da licenca", kind: "date", required: true },
+      { name: "massaRsuAnualT", label: "Massa anual enviada (t)", kind: "number", required: true },
+      { name: "percentualRsuDestino", label: "Percentual do RSU municipal destinado (%)", kind: "number", required: true },
+      { name: "tratamentoPercolado", label: "Tratamento de percolado", kind: "select", required: true, options: ["Nao informado", "Primario", "Secundario", "Terciario"] },
+      { name: "captacaoGases", label: "Possui captacao/queima de gases?", kind: "select", required: true, options: ["Sim", "Nao", "Nao se aplica"] },
+      { name: "documentoLicenca", label: "Upload da licenca ambiental", kind: "file", required: true },
+      { name: "documentoContrato", label: "Upload do contrato/declaracao do operador", kind: "file", required: true },
+      { name: "documentoPesagem", label: "Upload de relatorio de pesagens/MTR", kind: "file", required: true },
+    ],
+  },
+  {
+    id: "residuos_coleta_seletiva",
+    module: "residuos",
+    title: "Coleta Seletiva e Cooperativas",
+    description: "Registra pesagens por material reciclavel e comprovantes das cooperativas beneficiarias.",
+    spreadsheet: true,
+    fields: [
+      { name: "cooperativa", label: "Cooperativa/associacao", kind: "text", required: true },
+      { name: "mesReferencia", label: "Mes de referencia", kind: "select", required: true, options: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"] },
+      { name: "papelT", label: "Papel (t)", kind: "number", required: true },
+      { name: "plasticoT", label: "Plastico (t)", kind: "number", required: true },
+      { name: "vidroT", label: "Vidro (t)", kind: "number", required: true },
+      { name: "metalT", label: "Metal (t)", kind: "number", required: true },
+      { name: "notaFiscalMtr", label: "Upload da nota fiscal ou MTR", kind: "file", required: true },
+      { name: "parceriaCatadores", label: "Documento de parceria com catadores", kind: "file", required: true },
+    ],
+  },
+  {
+    id: "esgoto_ete_laudos",
+    module: "esgoto",
+    title: "ETE, Licenca e Laudos de Eficiencia",
+    description: "Cadastro operacional para pontuacao de esgotamento sanitario: populacao atendida, nivel de tratamento, licenca e laudos DBO.",
+    spreadsheet: true,
+    fields: [
+      { name: "nomeEte", label: "Nome da ETE/ETR", kind: "text", required: true },
+      { name: "nivelTratamento", label: "Nivel de tratamento", kind: "select", required: true, options: ["Primario", "Secundario", "Terciario", "Emissario Submarino"] },
+      { name: "populacaoAtendida", label: "Populacao atendida", kind: "number", required: true },
+      { name: "vazaoMedia", label: "Vazao media anual (m3/dia)", kind: "number", required: true },
+      { name: "proconAgua", label: "Vinculada ao Procon Agua?", kind: "select", required: true, options: ["Sim", "Nao"] },
+      { name: "licencaEte", label: "Upload da licenca da ETE", kind: "file", required: true },
+      { name: "laudoDbo", label: "Upload dos laudos mensais DBO", kind: "file", required: true },
+      { name: "certificadoLaboratorio", label: "Upload certificado laboratorio credenciado", kind: "file", required: true },
+    ],
+  },
+  {
+    id: "iqsmma_condema_fundo",
+    module: "iqsmma",
+    title: "CONDEMA e Fundo Municipal",
+    description: "Comprova funcionamento do conselho e regularidade dos repasses ao Fundo Municipal de Meio Ambiente.",
+    spreadsheet: false,
+    fields: [
+      { name: "atasCondema", label: "Quantidade de atas CONDEMA validadas", kind: "number", required: true },
+      { name: "leiFundo", label: "Numero da lei de criacao do Fundo", kind: "text", required: true },
+      { name: "normaRepasse", label: "Norma de repasse do ICMS Ecologico", kind: "text", required: true },
+      { name: "percentualRepasse", label: "Percentual previsto de repasse (%)", kind: "number", required: true },
+      { name: "atasUpload", label: "Upload das atas do CONDEMA", kind: "file", required: true },
+      { name: "leiFundoUpload", label: "Upload da lei/norma do Fundo", kind: "file", required: true },
+      { name: "extratosUpload", label: "Upload dos 12 extratos mensais", kind: "file", required: true },
+    ],
+  },
+  {
+    id: "ifca_consolidacao",
+    module: "ifca",
+    title: "Fechamento e Envio IFCA",
+    description: "Checklist final de revisao antes da exportacao do pacote oficial para INEA/CEPERJ.",
+    spreadsheet: false,
+    fields: [
+      { name: "responsavelTecnico", label: "Responsavel tecnico", kind: "text", required: true },
+      { name: "dataRevisao", label: "Data da revisao final", kind: "date", required: true },
+      { name: "semPendencias", label: "Todos os modulos foram revisados?", kind: "checkbox", required: true },
+      { name: "observacoes", label: "Observacoes finais", kind: "textarea", required: false },
+      { name: "relatorioFinal", label: "Upload do relatorio consolidado assinado", kind: "file", required: true },
+    ],
+  },
+];
 
 function numberPt(value: number | null | undefined, decimals = 2) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
@@ -65,6 +178,79 @@ async function api<T>(url: string, options?: RequestInit): Promise<T> {
   return payload as T;
 }
 
+function storageKey(formId: string) {
+  return `${draftPrefix}:${formId}`;
+}
+
+function isFilled(value: string | boolean | undefined) {
+  if (typeof value === "boolean") return value;
+  return Boolean(value && value.trim().length > 0);
+}
+
+function getChecklist(config: DigitalFormConfig, draft: DraftRecord) {
+  return config.fields
+    .filter((field) => field.required)
+    .map((field) => ({
+      label: field.label,
+      complete: isFilled(draft[field.name]),
+      document: field.kind === "file",
+    }));
+}
+
+function getFormStatus(config: DigitalFormConfig, draft: DraftRecord): FormStatus {
+  const hasAnyValue = Object.values(draft).some(isFilled);
+  if (!hasAnyValue) return "nao_iniciado";
+
+  const checklist = getChecklist(config, draft);
+  const missingDocs = checklist.some((item) => item.document && !item.complete);
+  const missingRequired = checklist.some((item) => !item.complete);
+
+  if (!missingRequired) return "completo";
+  if (missingDocs) return "pendente_documento";
+  return "em_preenchimento";
+}
+
+function statusLabel(status: FormStatus) {
+  return {
+    nao_iniciado: "Nao iniciado",
+    em_preenchimento: "Em preenchimento",
+    pendente_documento: "Pendente de documento",
+    completo: "Completo",
+  }[status];
+}
+
+function statusTone(status: FormStatus): "green" | "amber" | "red" | "blue" {
+  return {
+    nao_iniciado: "blue",
+    em_preenchimento: "amber",
+    pendente_documento: "red",
+    completo: "green",
+  }[status];
+}
+
+function loadDraft(formId: string): DraftRecord {
+  try {
+    return JSON.parse(localStorage.getItem(storageKey(formId)) || "{}") as DraftRecord;
+  } catch {
+    return {};
+  }
+}
+
+function saveCsv(filename: string, config: DigitalFormConfig, draft: DraftRecord) {
+  const header = ["campo", "valor"];
+  const rows = config.fields.map((field) => [field.label, String(draft[field.name] ?? "")]);
+  const csv = [header, ...rows]
+    .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(";"))
+    .join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 function MetricCard(props: { title: string; value: string; helper: string; tone?: "green" | "amber" | "red" }) {
   return (
     <article className={`metric ${props.tone || ""}`}>
@@ -77,6 +263,147 @@ function MetricCard(props: { title: string; value: string; helper: string; tone?
 
 function Badge({ children, tone }: { children: React.ReactNode; tone: "green" | "amber" | "red" | "blue" }) {
   return <span className={`badge ${tone}`}>{children}</span>;
+}
+
+function CompletionDashboard() {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const onStorage = () => setTick((value) => value + 1);
+    window.addEventListener("draft-saved", onStorage);
+    return () => window.removeEventListener("draft-saved", onStorage);
+  }, []);
+
+  const summary = useMemo(() => {
+    const statuses = digitalForms.map((form) => getFormStatus(form, loadDraft(form.id)));
+    const complete = statuses.filter((status) => status === "completo").length;
+    const pendingDocument = statuses.filter((status) => status === "pendente_documento").length;
+    return {
+      complete,
+      pendingDocument,
+      total: digitalForms.length,
+      percent: Math.round((complete / digitalForms.length) * 100),
+    };
+  }, [tick]);
+
+  return (
+    <section className="completion-panel">
+      <div>
+        <span>Conclusao geral dos formularios</span>
+        <strong>{summary.percent}%</strong>
+      </div>
+      <div className="completion-track">
+        <i style={{ width: `${summary.percent}%` }} />
+      </div>
+      <p>
+        {summary.complete} de {summary.total} completos. {summary.pendingDocument} com documento pendente.
+      </p>
+    </section>
+  );
+}
+
+function DigitalForm({ config }: { config: DigitalFormConfig }) {
+  const [draft, setDraft] = useState<DraftRecord>(() => loadDraft(config.id));
+  const status = getFormStatus(config, draft);
+  const checklist = getChecklist(config, draft);
+  const pending = checklist.filter((item) => !item.complete);
+
+  function updateField(field: FieldConfig, value: string | boolean) {
+    setDraft((current) => {
+      const next = { ...current, [field.name]: value };
+      localStorage.setItem(storageKey(config.id), JSON.stringify(next));
+      window.dispatchEvent(new Event("draft-saved"));
+      return next;
+    });
+  }
+
+  function saveDraft() {
+    localStorage.setItem(storageKey(config.id), JSON.stringify(draft));
+    window.dispatchEvent(new Event("draft-saved"));
+  }
+
+  return (
+    <article className="digital-form">
+      <div className="digital-form-header">
+        <div>
+          <p>{config.module.toUpperCase()}</p>
+          <h3>{config.title}</h3>
+          <span>{config.description}</span>
+        </div>
+        <Badge tone={statusTone(status)}>{statusLabel(status)}</Badge>
+      </div>
+
+      <div className="form-grid">
+        {config.fields.map((field) => (
+          <label key={field.name} className={field.kind === "textarea" || field.kind === "file" ? "wide" : ""}>
+            {field.label}
+            {field.kind === "select" && (
+              <select value={String(draft[field.name] ?? "")} onChange={(event) => updateField(field, event.target.value)}>
+                <option value="">Selecione</option>
+                {field.options?.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            )}
+            {field.kind === "textarea" && (
+              <textarea value={String(draft[field.name] ?? "")} onChange={(event) => updateField(field, event.target.value)} placeholder={field.placeholder} />
+            )}
+            {field.kind === "checkbox" && (
+              <span className="check-row">
+                <input type="checkbox" checked={Boolean(draft[field.name])} onChange={(event) => updateField(field, event.target.checked)} />
+                Confirmado
+              </span>
+            )}
+            {field.kind === "file" && (
+              <input
+                type="file"
+                onChange={(event) => updateField(field, event.target.files?.[0]?.name || "")}
+              />
+            )}
+            {(field.kind === "text" || field.kind === "number" || field.kind === "date") && (
+              <input
+                type={field.kind}
+                value={String(draft[field.name] ?? "")}
+                onChange={(event) => updateField(field, event.target.value)}
+                placeholder={field.placeholder}
+              />
+            )}
+            {field.kind === "file" && draft[field.name] && <small>Arquivo selecionado: {String(draft[field.name])}</small>}
+          </label>
+        ))}
+      </div>
+
+      <div className="checklist">
+        <h4>Checklist automatico de pendencias</h4>
+        {checklist.map((item) => (
+          <div key={item.label} className={item.complete ? "done" : "missing"}>
+            <span>{item.complete ? "OK" : "Pendente"}</span>
+            {item.label}
+          </div>
+        ))}
+        {pending.length === 0 && <div className="done"><span>OK</span>Formulario completo para revisao tecnica.</div>}
+      </div>
+
+      <div className="form-actions">
+        <button type="button" onClick={saveDraft}>Salvar rascunho</button>
+        <button type="button" onClick={() => window.print()}>Gerar PDF</button>
+        {config.spreadsheet && (
+          <button type="button" onClick={() => saveCsv(`${config.id}.csv`, config, draft)}>Exportar Excel</button>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function ModuleForms({ module }: { module: string }) {
+  return (
+    <div className="module-forms">
+      {digitalForms.filter((form) => form.module === module).map((form) => (
+        <DigitalForm key={form.id} config={form} />
+      ))}
+    </div>
+  );
 }
 
 function EsgotoPanel() {
@@ -120,20 +447,20 @@ function EsgotoPanel() {
     <section className="panel">
       <div className="section-header">
         <div>
-          <h2>Esgotamento Sanitário</h2>
-          <p>Consolidação das ETEs de Nova Iguaçu para o Índice de Tratamento de Esgoto.</p>
+          <h2>Esgotamento Sanitario</h2>
+          <p>Consolidacao das ETEs de Nova Iguacu para o Indice de Tratamento de Esgoto.</p>
         </div>
         <button onClick={recalcular} disabled={status === "loading"}>{status === "loading" ? "Calculando..." : "Recalcular ITE"}</button>
       </div>
       {error && <div className="alert red">{error}</div>}
       <div className="grid three">
-        <MetricCard title="Pontuação final" value={numberPt(data?.pontuacaoFinalMunicipal, 4)} helper="Resultado consolidado das estações calculadas." tone={data?.possuiPossivelSobreposicaoPopulacional ? "amber" : "green"} />
-        <MetricCard title="Cobertura somada" value={`${numberPt(data?.somaPercentualAtendido)}%`} helper="Soma da população atendida informada." />
-        <MetricCard title="ETEs monitoradas" value={String(data?.totalEstacoes ?? 0)} helper="Estações cadastradas no ciclo atual." />
+        <MetricCard title="Pontuacao final" value={numberPt(data?.pontuacaoFinalMunicipal, 4)} helper="Resultado consolidado das estacoes calculadas." tone={data?.possuiPossivelSobreposicaoPopulacional ? "amber" : "green"} />
+        <MetricCard title="Cobertura somada" value={`${numberPt(data?.somaPercentualAtendido)}%`} helper="Soma da populacao atendida informada." />
+        <MetricCard title="ETEs monitoradas" value={String(data?.totalEstacoes ?? 0)} helper="Estacoes cadastradas no ciclo atual." />
       </div>
-      {data?.possuiPossivelSobreposicaoPopulacional && <div className="alert amber">A cobertura ultrapassou 100%. Revise a população atendida antes de enviar ao INEA/CEPERJ.</div>}
+      {data?.possuiPossivelSobreposicaoPopulacional && <div className="alert amber">A cobertura ultrapassou 100%. Revise a populacao atendida antes de enviar ao INEA/CEPERJ.</div>}
       <Table
-        columns={["ETE", "Tratamento", "População atendida", "RE", "Nota", "Status"]}
+        columns={["ETE", "Tratamento", "Populacao atendida", "RE", "Nota", "Status"]}
         rows={(data?.estacoes ?? []).map((ete) => [
           ete.nome,
           ete.nivelTratamento,
@@ -143,6 +470,7 @@ function EsgotoPanel() {
           ete.statusCalculo,
         ])}
       />
+      <ModuleForms module="esgoto" />
     </section>
   );
 }
@@ -159,7 +487,7 @@ function ResiduosPanel() {
     const total = data.totalReciclaveisT || 1;
     return [
       ["Papel", data.totaisPorMaterial.papelT, "blue"],
-      ["Plástico", data.totaisPorMaterial.plasticoT, "green"],
+      ["Plastico", data.totaisPorMaterial.plasticoT, "green"],
       ["Vidro", data.totaisPorMaterial.vidroT, "teal"],
       ["Metal", data.totaisPorMaterial.metalT, "amber"],
     ].map(([nome, valor, cor]) => ({ nome, valor: Number(valor), cor, pct: (Number(valor) / total) * 100 }));
@@ -186,8 +514,8 @@ function ResiduosPanel() {
     <section className="panel">
       <div className="section-header">
         <div>
-          <h2>Resíduos Sólidos e Coleta Seletiva</h2>
-          <p>Simulação do Fator de Reciclagem com base nas pesagens validadas.</p>
+          <h2>Residuos Solidos e Coleta Seletiva</h2>
+          <p>Simulacao do Fator de Reciclagem com base nas pesagens validadas.</p>
         </div>
       </div>
       <div className="form-card">
@@ -198,17 +526,18 @@ function ResiduosPanel() {
       {error && <div className="alert red">{error}</div>}
       <div className="grid three">
         <MetricCard title="Fator de Reciclagem" value={`Nota ${data?.fatorReciclagem ?? "-"}`} helper={`${data?.registrosValidadosConsiderados ?? 0} registros validados considerados.`} tone="green" />
-        <MetricCard title="Índice conquistado" value={`${numberPt(data?.percentualReciclagem)}%`} helper="Percentual sobre o total anual de RSU." />
-        <MetricCard title="Toneladas recicladas" value={`${numberPt(data?.totalReciclaveisT, 3)} t`} helper="Papel, plástico, vidro e metal consolidados." />
+        <MetricCard title="Indice conquistado" value={`${numberPt(data?.percentualReciclagem)}%`} helper="Percentual sobre o total anual de RSU." />
+        <MetricCard title="Toneladas recicladas" value={`${numberPt(data?.totalReciclaveisT, 3)} t`} helper="Papel, plastico, vidro e metal consolidados." />
       </div>
       <div className="bars">
         {materiais.map((m) => (
           <div key={m.nome as string}>
-            <div className="bar-label"><strong>{m.nome}</strong><span>{numberPt(m.valor, 3)} t · {numberPt(m.pct)}%</span></div>
+            <div className="bar-label"><strong>{m.nome}</strong><span>{numberPt(m.valor, 3)} t - {numberPt(m.pct)}%</span></div>
             <div className="bar"><i className={String(m.cor)} style={{ width: `${Math.min(m.pct, 100)}%` }} /></div>
           </div>
         ))}
       </div>
+      <ModuleForms module="residuos" />
     </section>
   );
 }
@@ -241,18 +570,18 @@ function IqsmmaPanel() {
     <section className="panel">
       <div className="section-header">
         <div>
-          <h2>Governança Institucional IQSMMA</h2>
+          <h2>Governanca Institucional IQSMMA</h2>
           <p>Auditoria do CONDEMA e do Fundo Municipal de Meio Ambiente.</p>
         </div>
         <button onClick={carregar} disabled={status === "loading"}>Atualizar auditoria</button>
       </div>
       {error && <div className="alert red">{error}</div>}
       <div className={`status-block ${tone}`}>
-        {data?.statusInstitucional === "Critico" ? "STATUS CRÍTICO - RISCO ALTO DE PERDA DE RECEITA" : data?.statusInstitucional === "Atencao" ? "STATUS EM ATENÇÃO" : "STATUS REGULAR"}
+        {data?.statusInstitucional === "Critico" ? "STATUS CRITICO - RISCO ALTO DE PERDA DE RECEITA" : data?.statusInstitucional === "Atencao" ? "STATUS EM ATENCAO" : "STATUS REGULAR"}
       </div>
       <div className="grid two">
         <MetricCard title="CONDEMA" value={`${data?.requisitos.condema.atasValidadas ?? 0}/${data?.requisitos.condema.minimoExigido ?? 3}`} helper="Atas validadas no ciclo." tone={data?.requisitos.condema.regular ? "green" : "red"} />
-        <MetricCard title="Fundo Municipal" value={data?.requisitos.fundoMunicipal.statusIqsmma ?? "-"} helper={(data?.requisitos.fundoMunicipal.mesesSemExtratoValidado.length ?? 0) > 0 ? `Faltam meses: ${data?.requisitos.fundoMunicipal.mesesSemExtratoValidado.join(", ")}` : "Série de extratos sem pendências."} tone={data?.requisitos.fundoMunicipal.possuiSerieCompletaDeExtratos ? "green" : "amber"} />
+        <MetricCard title="Fundo Municipal" value={data?.requisitos.fundoMunicipal.statusIqsmma ?? "-"} helper={(data?.requisitos.fundoMunicipal.mesesSemExtratoValidado.length ?? 0) > 0 ? `Faltam meses: ${data?.requisitos.fundoMunicipal.mesesSemExtratoValidado.join(", ")}` : "Serie de extratos sem pendencias."} tone={data?.requisitos.fundoMunicipal.possuiSerieCompletaDeExtratos ? "green" : "amber"} />
       </div>
       <div className="alerts-list">
         {(data?.alertas ?? []).map((alerta, index) => (
@@ -264,6 +593,7 @@ function IqsmmaPanel() {
         ))}
         {data?.alertas.length === 0 && <div className="empty">Nenhum alerta institucional identificado.</div>}
       </div>
+      <ModuleForms module="iqsmma" />
     </section>
   );
 }
@@ -274,21 +604,22 @@ function ConsolidadorPanel() {
       <div className="section-header">
         <div>
           <h2>Consolidador IFCA</h2>
-          <p>Relatório executivo para fechamento do ciclo e preparação do envio oficial.</p>
+          <p>Relatorio executivo para fechamento do ciclo e preparacao do envio oficial.</p>
         </div>
-        <button onClick={() => window.print()}>Exportar relatório</button>
+        <button onClick={() => window.print()}>Exportar relatorio</button>
       </div>
       <div className="ifca-card">
-        <span>Município</span>
-        <strong>Nova Iguaçu</strong>
-        <p>Ciclo 2026 · relatório gerado em {new Date().toLocaleDateString("pt-BR")}</p>
+        <span>Municipio</span>
+        <strong>Nova Iguacu</strong>
+        <p>Ciclo 2026 - relatorio gerado em {new Date().toLocaleDateString("pt-BR")}</p>
       </div>
       <div className="grid three">
-        <MetricCard title="Saneamento" value="IES" helper="Nota calculada pelo módulo de ETEs." />
-        <MetricCard title="Resíduos" value="IRS" helper="Fator de Reciclagem e coleta seletiva." />
+        <MetricCard title="Saneamento" value="IES" helper="Nota calculada pelo modulo de ETEs." />
+        <MetricCard title="Residuos" value="IRS" helper="Fator de Reciclagem e coleta seletiva." />
         <MetricCard title="Institucional" value="IQSMMA" helper="CONDEMA e Fundo Municipal." />
       </div>
-      <div className="status-footer green">PRONTO PARA OPERAÇÃO ASSISTIDA DO MVP</div>
+      <ModuleForms module="ifca" />
+      <div className="status-footer green">PRONTO PARA OPERACAO ASSISTIDA DO MVP</div>
     </section>
   );
 }
@@ -308,10 +639,10 @@ function Table({ columns, rows }: { columns: string[]; rows: Array<Array<React.R
 }
 
 function App() {
-  const [tab, setTab] = useState("esgoto");
+  const [tab, setTab] = useState("residuos");
   const tabs = [
+    ["residuos", "Residuos"],
     ["esgoto", "Esgoto"],
-    ["residuos", "Resíduos"],
     ["iqsmma", "IQSMMA"],
     ["ifca", "IFCA"],
   ];
@@ -320,12 +651,13 @@ function App() {
     <main>
       <header className="hero">
         <div>
-          <span>SEMAM Nova Iguaçu</span>
-          <h1>ICMS Ecológico</h1>
-          <p>Painel interno para monitoramento técnico, evidências e fechamento do ciclo anual.</p>
+          <span>SEMAM Nova Iguacu</span>
+          <h1>ICMS Ecologico</h1>
+          <p>Painel interno para monitoramento tecnico, evidencias e fechamento do ciclo anual.</p>
         </div>
         <a href="/api/health" target="_blank" rel="noreferrer">API online</a>
       </header>
+      <CompletionDashboard />
       <nav className="tabs">
         {tabs.map(([id, label]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>{label}</button>)}
       </nav>
