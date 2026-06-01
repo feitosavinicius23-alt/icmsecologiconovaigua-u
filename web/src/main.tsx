@@ -21,10 +21,24 @@ type DigitalFormConfig = {
   title: string;
   description: string;
   spreadsheet?: boolean;
+  repeatable?: boolean;
   fields: FieldConfig[];
 };
 
 type DraftRecord = Record<string, string | boolean>;
+type SavedFormEntry = {
+  id: string;
+  label: string;
+  status: FormStatus;
+  draft: DraftRecord;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type PersistedFormPayload = {
+  draft?: DraftRecord;
+  records?: SavedFormEntry[];
+};
 
 type EvidenceUploadResponse = {
   resultado: {
@@ -40,7 +54,7 @@ type ServerFormResponse = {
     id: number;
     formularioCodigo: string;
     status: string;
-    respostaJson: DraftRecord;
+    respostaJson: DraftRecord | PersistedFormPayload;
     atualizadoEm: string;
   };
 };
@@ -952,6 +966,10 @@ function storageKey(formId: string) {
   return `${draftPrefix}:${formId}`;
 }
 
+function recordsKey(formId: string) {
+  return `${draftPrefix}:records:${formId}`;
+}
+
 function isFilled(value: string | boolean | undefined) {
   if (typeof value === "boolean") return value;
   return Boolean(value && value.trim().length > 0);
@@ -1009,10 +1027,50 @@ function apiStatus(status: FormStatus) {
 
 function loadDraft(formId: string): DraftRecord {
   try {
-    return JSON.parse(localStorage.getItem(storageKey(formId)) || "{}") as DraftRecord;
+    const parsed = JSON.parse(localStorage.getItem(storageKey(formId)) || "{}") as DraftRecord | PersistedFormPayload;
+    if (isPersistedPayload(parsed)) return parsed.draft ?? {};
+    return parsed;
   } catch {
     return {};
   }
+}
+
+function isPersistedPayload(value: unknown): value is PersistedFormPayload {
+  return Boolean(value && typeof value === "object" && ("draft" in value || "records" in value));
+}
+
+function loadRecords(formId: string): SavedFormEntry[] {
+  try {
+    return JSON.parse(localStorage.getItem(recordsKey(formId)) || "[]") as SavedFormEntry[];
+  } catch {
+    return [];
+  }
+}
+
+function saveRecords(formId: string, records: SavedFormEntry[]) {
+  localStorage.setItem(recordsKey(formId), JSON.stringify(records));
+}
+
+function getEntryLabel(config: DigitalFormConfig, draft: DraftRecord, index: number) {
+  const preferred = [
+    "nomeEte",
+    "nomeUc",
+    "nomeRppn",
+    "nomeBacia",
+    "cooperativa",
+    "unidadeDestino",
+    "nomeConsorcio",
+    "responsavelTecnico",
+    "programaOleo",
+    "possuiPmsb",
+    "possuiPlano",
+    "possuiPrograma",
+    "dataReuniaoCondema",
+  ];
+  const field = preferred.find((name) => isFilled(draft[name]));
+  if (field) return String(draft[field]);
+  const firstField = config.fields.find((item) => item.kind !== "file" && isFilled(draft[item.name]));
+  return firstField ? String(draft[firstField.name]) : `${config.title} ${index + 1}`;
 }
 
 function loadProfile(): UserProfile {
@@ -1053,7 +1111,7 @@ async function loadServerDraft(formId: string) {
   return api<ServerFormResponse>(`/api/icms/formularios/respostas/${formId}?cicloIcmsId=${cicloId}`);
 }
 
-async function saveServerDraft(config: DigitalFormConfig, draft: DraftRecord, status: FormStatus) {
+async function saveServerDraft(config: DigitalFormConfig, draft: DraftRecord, status: FormStatus, records: SavedFormEntry[] = loadRecords(config.id)) {
   const checklist = getChecklist(config, draft).map((item) => ({
     item: item.label,
     obrigatorio: true,
@@ -1067,7 +1125,10 @@ async function saveServerDraft(config: DigitalFormConfig, draft: DraftRecord, st
     body: JSON.stringify({
       cicloIcmsId: cicloId,
       status: apiStatus(status),
-      respostaJson: draft,
+      respostaJson: {
+        draft,
+        records,
+      },
       checklist,
     }),
   });
@@ -1127,13 +1188,19 @@ function getComplianceItemStatus(item: ComplianceItem) {
   if (item.requiredFields?.length) {
     return item.requiredFields.every((group) => {
       const draft = loadDraft(group.formId);
-      return group.fields.every((field) => isFilled(draft[field]));
+      const records = loadRecords(group.formId);
+      const currentDraftComplete = group.fields.every((field) => isFilled(draft[field]));
+      const savedRecordComplete = records.some((record) => group.fields.every((field) => isFilled(record.draft[field])));
+      return currentDraftComplete || savedRecordComplete;
     });
   }
 
   return item.formIds.every((formId) => {
     const form = digitalForms.find((candidate) => candidate.id === formId);
-    return form ? getFormStatus(form, loadDraft(formId)) === "completo" : false;
+    if (!form) return false;
+    const currentComplete = getFormStatus(form, loadDraft(formId)) === "completo";
+    const savedComplete = loadRecords(formId).some((record) => record.status === "completo");
+    return currentComplete || savedComplete;
   });
 }
 
@@ -1185,7 +1252,11 @@ function CompletionDashboard() {
   }, []);
 
   const summary = useMemo(() => {
-    const statuses = digitalForms.map((form) => getFormStatus(form, loadDraft(form.id)));
+    const statuses = digitalForms.map((form) => {
+      const currentStatus = getFormStatus(form, loadDraft(form.id));
+      const records = loadRecords(form.id);
+      return records.some((record) => record.status === "completo") ? "completo" : currentStatus;
+    });
     const complete = statuses.filter((status) => status === "completo").length;
     const pendingDocument = statuses.filter((status) => status === "pendente_documento").length;
     return {
@@ -1249,7 +1320,8 @@ function ScoreSimulatorPanel() {
   const rows = useMemo(() => scoreAxes.map((axis) => {
     const completed = axis.formIds.filter((formId) => {
       const form = digitalForms.find((item) => item.id === formId);
-      return form ? getFormStatus(form, loadDraft(formId)) === "completo" : false;
+      if (!form) return false;
+      return getFormStatus(form, loadDraft(formId)) === "completo" || loadRecords(formId).some((record) => record.status === "completo");
     }).length;
     const ratio = completed / axis.formIds.length;
     const score = ratio * axis.weight * 100;
@@ -1297,6 +1369,8 @@ function ScoreSimulatorPanel() {
 
 function DigitalForm({ config }: { config: DigitalFormConfig }) {
   const [draft, setDraft] = useState<DraftRecord>(() => loadDraft(config.id));
+  const [records, setRecords] = useState<SavedFormEntry[]>(() => loadRecords(config.id));
+  const [activeRecordId, setActiveRecordId] = useState<string | null>(null);
   const [uploadingField, setUploadingField] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState("");
   const [comment, setComment] = useState("");
@@ -1322,9 +1396,18 @@ function DigitalForm({ config }: { config: DigitalFormConfig }) {
         if (!active) return;
 
         const localHasValues = Object.values(localDraft).some(isFilled);
-        if (serverDraft.resultado?.respostaJson && !localHasValues) {
-          setDraft(serverDraft.resultado.respostaJson);
-          localStorage.setItem(storageKey(config.id), JSON.stringify(serverDraft.resultado.respostaJson));
+        if (serverDraft.resultado?.respostaJson) {
+          const payload = serverDraft.resultado.respostaJson;
+          const serverPayload = isPersistedPayload(payload) ? payload : { draft: payload as DraftRecord, records: [] };
+          const serverRecords = serverPayload.records ?? [];
+          if (serverRecords.length) {
+            setRecords(serverRecords);
+            saveRecords(config.id, serverRecords);
+          }
+          if (!localHasValues && serverPayload.draft) {
+            setDraft(serverPayload.draft);
+            localStorage.setItem(storageKey(config.id), JSON.stringify(serverPayload.draft));
+          }
           setSyncStatus("synced");
           setSyncMessage("Ultima versao carregada do banco.");
         }
@@ -1350,9 +1433,10 @@ function DigitalForm({ config }: { config: DigitalFormConfig }) {
 
     const timeoutId = window.setTimeout(() => {
       localStorage.setItem(storageKey(config.id), JSON.stringify(draft));
+      saveRecords(config.id, records);
       window.dispatchEvent(new Event("draft-saved"));
       setSyncStatus("syncing");
-      saveServerDraft(config, draft, getFormStatus(config, draft))
+      saveServerDraft(config, draft, getFormStatus(config, draft), records)
         .then(() => {
           appendAudit(config.id, "Rascunho sincronizado no banco");
           setSyncStatus("synced");
@@ -1366,7 +1450,7 @@ function DigitalForm({ config }: { config: DigitalFormConfig }) {
     }, 900);
 
     return () => window.clearTimeout(timeoutId);
-  }, [config.id, draft]);
+  }, [config, draft, records]);
 
   function updateField(field: FieldConfig, value: string | boolean) {
     setDraft((current) => {
@@ -1376,10 +1460,11 @@ function DigitalForm({ config }: { config: DigitalFormConfig }) {
 
   async function saveDraft() {
     localStorage.setItem(storageKey(config.id), JSON.stringify(draft));
+    saveRecords(config.id, records);
     window.dispatchEvent(new Event("draft-saved"));
     setSyncStatus("syncing");
     try {
-      await saveServerDraft(config, draft, status);
+      await saveServerDraft(config, draft, status, records);
       appendAudit(config.id, "Rascunho salvo manualmente e sincronizado no banco");
       setSyncStatus("synced");
       setSyncMessage("Rascunho salvo no banco de dados.");
@@ -1390,6 +1475,72 @@ function DigitalForm({ config }: { config: DigitalFormConfig }) {
     } finally {
       setAuditTick((value) => value + 1);
     }
+  }
+
+  async function persistRecord(nextRecords: SavedFormEntry[], nextDraft = draft, message = "Registro atualizado") {
+    setRecords(nextRecords);
+    saveRecords(config.id, nextRecords);
+    localStorage.setItem(storageKey(config.id), JSON.stringify(nextDraft));
+    window.dispatchEvent(new Event("draft-saved"));
+    setSyncStatus("syncing");
+    try {
+      await saveServerDraft(config, nextDraft, getFormStatus(config, nextDraft), nextRecords);
+      appendAudit(config.id, `${message} e sincronizado no banco`);
+      setSyncStatus("synced");
+      setSyncMessage("Lista de registros sincronizada no banco.");
+    } catch {
+      appendAudit(config.id, `${message}, salvo localmente`);
+      setSyncStatus("error");
+      setSyncMessage("Registro salvo localmente; tente salvar novamente para sincronizar no banco.");
+    } finally {
+      setAuditTick((value) => value + 1);
+    }
+  }
+
+  function newRecord() {
+    setDraft({});
+    setActiveRecordId(null);
+    localStorage.setItem(storageKey(config.id), JSON.stringify({}));
+    appendAudit(config.id, "Novo registro iniciado");
+    setAuditTick((value) => value + 1);
+  }
+
+  async function saveCurrentRecord() {
+    const now = new Date().toISOString();
+    const currentStatus = getFormStatus(config, draft);
+    const existingIndex = activeRecordId ? records.findIndex((item) => item.id === activeRecordId) : -1;
+    const nextEntry: SavedFormEntry = {
+      id: activeRecordId ?? `${config.id}-${Date.now()}`,
+      label: getEntryLabel(config, draft, existingIndex >= 0 ? existingIndex : records.length),
+      status: currentStatus,
+      draft,
+      createdAt: existingIndex >= 0 ? records[existingIndex].createdAt : now,
+      updatedAt: now,
+    };
+    const nextRecords = existingIndex >= 0
+      ? records.map((item, index) => (index === existingIndex ? nextEntry : item))
+      : [nextEntry, ...records];
+    setActiveRecordId(nextEntry.id);
+    await persistRecord(nextRecords, draft, existingIndex >= 0 ? "Registro salvo" : "Registro adicionado");
+  }
+
+  function loadRecord(entry: SavedFormEntry) {
+    setDraft(entry.draft);
+    setActiveRecordId(entry.id);
+    localStorage.setItem(storageKey(config.id), JSON.stringify(entry.draft));
+    appendAudit(config.id, `Registro carregado: ${entry.label}`);
+    setAuditTick((value) => value + 1);
+  }
+
+  async function deleteRecord(entryId: string) {
+    const entry = records.find((item) => item.id === entryId);
+    const nextRecords = records.filter((item) => item.id !== entryId);
+    const nextDraft = activeRecordId === entryId ? {} : draft;
+    if (activeRecordId === entryId) {
+      setDraft({});
+      setActiveRecordId(null);
+    }
+    await persistRecord(nextRecords, nextDraft, `Registro excluido${entry ? `: ${entry.label}` : ""}`);
   }
 
   async function addComment() {
@@ -1447,6 +1598,32 @@ function DigitalForm({ config }: { config: DigitalFormConfig }) {
           </Badge>
         </div>
       </div>
+
+      <section className="record-manager">
+        <div>
+          <strong>{records.length} registro(s) cadastrado(s)</strong>
+          <p>Use esta area para cadastrar mais de um item neste modulo, como varias ETEs, UCs, cooperativas, atas ou bacias.</p>
+        </div>
+        <div className="record-actions">
+          <button type="button" onClick={newRecord}>Novo registro</button>
+          <button type="button" onClick={saveCurrentRecord}>{activeRecordId ? "Salvar registro" : "Adicionar registro"}</button>
+        </div>
+        {records.length > 0 && (
+          <div className="record-list">
+            {records.map((entry) => (
+              <article key={entry.id} className={entry.id === activeRecordId ? "active" : ""}>
+                <div>
+                  <strong>{entry.label}</strong>
+                  <span>Atualizado em {new Date(entry.updatedAt).toLocaleString("pt-BR")}</span>
+                </div>
+                <Badge tone={statusTone(entry.status)}>{statusLabel(entry.status)}</Badge>
+                <button type="button" onClick={() => loadRecord(entry)}>Abrir</button>
+                <button type="button" className="danger" onClick={() => deleteRecord(entry.id)}>Excluir</button>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
 
       <div className="form-grid">
         {config.fields.map((field) => (

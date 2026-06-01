@@ -207,6 +207,70 @@ input, select { display: block; width: 100%; height: 42px; margin-top: 7px; bord
   gap: 8px;
   min-width: 180px;
 }
+.record-manager {
+  display: grid;
+  gap: 12px;
+  margin: 18px 0;
+  padding: 14px;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  background: #eff6ff;
+}
+.record-manager strong { color: #0f172a; }
+.record-manager p {
+  margin: 4px 0 0;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 700;
+}
+.record-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.record-actions button,
+.record-list button {
+  border: 1px solid #2563eb;
+  border-radius: 8px;
+  padding: 9px 11px;
+  color: #1d4ed8;
+  background: white;
+  font-weight: 900;
+}
+.record-actions button:last-child {
+  color: white;
+  background: #2563eb;
+}
+.record-list {
+  display: grid;
+  gap: 8px;
+}
+.record-list article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid #dbe4ef;
+  border-radius: 9px;
+  background: white;
+}
+.record-list article.active {
+  border-color: #047857;
+  box-shadow: 0 0 0 3px rgba(4, 120, 87, .12);
+}
+.record-list span {
+  display: block;
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+}
+.record-list button.danger {
+  border-color: #fecaca;
+  color: #991b1b;
+  background: #fef2f2;
+}
 
 .form-grid {
   display: grid;
@@ -606,7 +670,7 @@ small { display: block; margin-top: 6px; color: #64748b; font-weight: 700; }
 }
 
 @media print {
-  .hero, .tabs, .section-header button, .form-actions, .completion-panel, .access-panel, .audit-tools { display: none !important; }
+  .hero, .tabs, .section-header button, .form-actions, .completion-panel, .access-panel, .audit-tools, .record-actions { display: none !important; }
   main { max-width: none; padding: 0; }
   .panel, .digital-form { box-shadow: none; border-color: #94a3b8; break-inside: avoid; }
   .compliance-layout { grid-template-columns: 1fr; }
@@ -651,6 +715,7 @@ small { display: block; margin-top: 6px; color: #64748b; font-weight: 700; }
   .hero { min-height: 260px; }
   .hero-actions { justify-content: flex-start; }
   .digital-form-header { flex-direction: column; }
+  .record-list article { grid-template-columns: 1fr; }
   .compliance-section-head, .compliance-item { grid-template-columns: 1fr; }
   .penalty-panel { position: static; }
   .report-letterhead, .signature-block { grid-template-columns: 1fr; flex-direction: column; align-items: flex-start; }
