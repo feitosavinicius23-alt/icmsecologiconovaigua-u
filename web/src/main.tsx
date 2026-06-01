@@ -157,6 +157,21 @@ type UcReportRow = {
 const cicloId = 1;
 const draftPrefix = "icms-ni-draft";
 const reportPrefix = "icms-ni-report";
+const profileKey = "icms-ni-profile";
+
+type UserProfile = {
+  nome: string;
+  perfil: "Administrador" | "Gestor Municipal" | "Tecnico" | "Visualizador";
+};
+
+const scoreAxes = [
+  { key: "mananciais", label: "Mananciais", weight: 0.10, formIds: ["mananciais_abastecimento"] },
+  { key: "esgoto", label: "Tratamento de Esgoto", weight: 0.20, formIds: ["esgoto_ete_laudos", "esgoto_procon_agua"] },
+  { key: "destinacao", label: "Destinacao de Residuos", weight: 0.20, formIds: ["residuos_destinacao_final"] },
+  { key: "remediacao", label: "Remediacao de Vazadouros", weight: 0.05, formIds: ["residuos_remediacao_vazadouros"] },
+  { key: "areas", label: "Areas Protegidas", weight: 0.36, formIds: ["uc_gestao", "uc_rppn_privada"] },
+  { key: "municipais", label: "Areas Protegidas Municipais", weight: 0.09, formIds: ["uc_municipais"] },
+];
 
 const digitalForms: DigitalFormConfig[] = [
   {
@@ -181,6 +196,24 @@ const digitalForms: DigitalFormConfig[] = [
       { name: "tratamentoPercolado", label: "Tratamento de percolado", kind: "select", required: true, options: ["Nao informado", "Primario", "Secundario", "Terciario"] },
       { name: "captacaoGases", label: "Possui captacao/queima de gases?", kind: "select", required: true, options: ["Sim", "Nao", "Nao se aplica"] },
       { name: "possuiLixaoAtivo", label: "Existe lixao/vazadouro ativo no municipio?", kind: "select", required: true, options: ["Nao", "Sim"] },
+      { name: "numeroMesesDestinacao", label: "Numero de meses com destinacao comprovada", kind: "number", required: true },
+      { name: "percentualUsoOutrosMunicipios", label: "Percentual de uso do aterro por outros municipios (%)", kind: "number", required: true },
+      { name: "rsuJaneiro", label: "RSU Janeiro (t)", kind: "number", required: true },
+      { name: "rsuFevereiro", label: "RSU Fevereiro (t)", kind: "number", required: true },
+      { name: "rsuMarco", label: "RSU Marco (t)", kind: "number", required: true },
+      { name: "rsuAbril", label: "RSU Abril (t)", kind: "number", required: true },
+      { name: "rsuMaio", label: "RSU Maio (t)", kind: "number", required: true },
+      { name: "rsuJunho", label: "RSU Junho (t)", kind: "number", required: true },
+      { name: "rsuJulho", label: "RSU Julho (t)", kind: "number", required: true },
+      { name: "rsuAgosto", label: "RSU Agosto (t)", kind: "number", required: true },
+      { name: "rsuSetembro", label: "RSU Setembro (t)", kind: "number", required: true },
+      { name: "rsuOutubro", label: "RSU Outubro (t)", kind: "number", required: true },
+      { name: "rsuNovembro", label: "RSU Novembro (t)", kind: "number", required: true },
+      { name: "rsuDezembro", label: "RSU Dezembro (t)", kind: "number", required: true },
+      { name: "responsavelDestinacao", label: "Responsavel pelas informacoes", kind: "text", required: true },
+      { name: "cargoResponsavelDestinacao", label: "Cargo do responsavel", kind: "text", required: true },
+      { name: "dataAssinaturaDestinacao", label: "Data", kind: "date", required: true },
+      { name: "assinaturaDestinacao", label: "Upload assinatura/declaracao do responsavel", kind: "file", required: true },
       { name: "documentoLicenca", label: "Upload da licenca ambiental", kind: "file", required: true },
       { name: "cdfMtrConsolidado", label: "Upload do CDF ou MTR consolidado SINIR/INEA", kind: "file", required: true },
       { name: "documentoContrato", label: "Upload do contrato/declaracao do operador", kind: "file", required: true },
@@ -206,6 +239,42 @@ const digitalForms: DigitalFormConfig[] = [
       { name: "metalT", label: "Metal (t)", kind: "number", required: true },
       { name: "notaFiscalMtr", label: "Upload da nota fiscal ou MTR", kind: "file", required: true },
       { name: "parceriaCatadores", label: "Upload do termo de colaboracao/contrato com catadores", kind: "file", required: true },
+      { name: "tipoColeta", label: "Tipo de coleta", kind: "select", required: true, options: ["Domiciliar", "Ponto a ponto", "UTC"] },
+      { name: "bairrosAtendidos", label: "Bairros atendidos", kind: "textarea", required: true },
+      { name: "logradourosAtendidos", label: "Logradouros atendidos", kind: "textarea", required: true },
+      { name: "domiciliosAtendidos", label: "Quantidade de domicilios atendidos", kind: "number", required: true },
+      { name: "localizacaoPevs", label: "Localizacao dos PEVs", kind: "textarea", required: true },
+      { name: "quantidadePevs", label: "Quantidade total de PEVs", kind: "number", required: true },
+      { name: "totalMensalReciclaveis", label: "Total mensal reciclaveis (t)", kind: "number", required: true },
+      { name: "mediaAnualReciclaveis", label: "Media anual reciclaveis (t)", kind: "number", required: true },
+      { name: "inclusaoCatadores", label: "Ha inclusao formal de catadores?", kind: "select", required: true, options: ["Sim", "Nao"] },
+      { name: "responsavelColeta", label: "Responsavel", kind: "text", required: true },
+      { name: "cargoResponsavelColeta", label: "Cargo", kind: "text", required: true },
+      { name: "dataColeta", label: "Data", kind: "date", required: true },
+      { name: "imagemSateliteArea", label: "Upload imagem de satelite da area atendida", kind: "file", required: true },
+      { name: "cnpjCooperativaUpload", label: "Upload comprovante CNPJ da cooperativa", kind: "file", required: true },
+      { name: "contratoEmpresaColeta", label: "Upload contrato com empresa, se houver", kind: "file", required: false },
+      { name: "licencaUtc", label: "Upload licenca da UTC, se houver", kind: "file", required: false },
+    ],
+  },
+  {
+    id: "residuos_consorcio_intermunicipal",
+    module: "residuos",
+    title: "Consorcio Intermunicipal de Residuos",
+    description: "Comprova participacao em consorcio publico, protocolo de intencoes, estatuto, lei autorizativa e contrato de rateio.",
+    spreadsheet: false,
+    fields: [
+      { name: "participaConsorcio", label: "Municipio participa de consorcio?", kind: "select", required: true, options: ["Sim", "Nao"] },
+      { name: "nomeConsorcio", label: "Nome do consorcio", kind: "text", required: true },
+      { name: "cnpjConsorcio", label: "CNPJ do consorcio", kind: "text", required: true },
+      { name: "dataAdesao", label: "Data de adesao", kind: "date", required: true },
+      { name: "contratoRateio", label: "Contrato de rateio", kind: "text", required: true },
+      { name: "documentoFormacao", label: "Upload documento de formacao", kind: "file", required: true },
+      { name: "protocoloIntencoes", label: "Upload protocolo de intencoes", kind: "file", required: true },
+      { name: "estatutoSocial", label: "Upload estatuto social", kind: "file", required: true },
+      { name: "leiAutorizativa", label: "Upload lei municipal autorizando participacao", kind: "file", required: true },
+      { name: "cnpjConsorcioUpload", label: "Upload comprovante CNPJ", kind: "file", required: true },
+      { name: "contratoRateioUpload", label: "Upload contrato de rateio", kind: "file", required: true },
     ],
   },
   {
@@ -217,12 +286,21 @@ const digitalForms: DigitalFormConfig[] = [
     spreadsheet: false,
     fields: [
       { name: "possuiPlano", label: "Municipio possui PMGIRS em versao final?", kind: "select", required: true, options: ["Sim", "Nao"] },
+      { name: "anoElaboracaoPmgirs", label: "Ano de elaboracao", kind: "number", required: true },
+      { name: "instituidoLeiDecretoPmgirs", label: "Instituido por lei/decreto?", kind: "select", required: true, options: ["Sim", "Nao"] },
       { name: "dataPlano", label: "Data do plano", kind: "date", required: true },
+      { name: "vigentePmgirs", label: "Esta vigente?", kind: "select", required: true, options: ["Sim", "Nao"] },
       { name: "prazoRevisao", label: "Plano esta dentro do prazo de revisao?", kind: "select", required: true, options: ["Sim", "Nao"] },
+      { name: "houveAudienciaPmgirs", label: "Houve audiencia publica?", kind: "select", required: true, options: ["Sim", "Nao"] },
+      { name: "houveRevisaoPmgirs", label: "Houve revisao?", kind: "select", required: true, options: ["Sim", "Nao"] },
       { name: "abrangeTerritorio", label: "Abrange todo o territorio municipal?", kind: "select", required: true, options: ["Sim", "Nao", "Parcialmente"] },
       { name: "controleSocial", label: "Houve audiencia, conselho ou consulta publica?", kind: "select", required: true, options: ["Audiencia publica", "Conselho municipal", "Consulta publica", "Nao comprovado"] },
       { name: "planoUpload", label: "Upload do PMGIRS datado", kind: "file", required: true },
+      { name: "leiDecretoPmgirsUpload", label: "Upload lei/decreto do PMGIRS", kind: "file", required: true },
       { name: "ataAprovacao", label: "Upload da ata/relatorio de participacao social", kind: "file", required: true },
+      { name: "listaPresencaPmgirsUpload", label: "Upload lista de presenca", kind: "file", required: true },
+      { name: "publicacaoOficialPmgirsUpload", label: "Upload publicacao oficial", kind: "file", required: true },
+      { name: "revisaoPmgirsUpload", label: "Upload revisao do plano", kind: "file", required: true },
       { name: "matrizConteudo", label: "Upload da matriz de conteudo minimo", kind: "file", required: true },
     ],
   },
@@ -235,11 +313,55 @@ const digitalForms: DigitalFormConfig[] = [
     spreadsheet: true,
     fields: [
       { name: "programaOleo", label: "Existe programa ou acao de coleta de oleo vegetal?", kind: "select", required: true, options: ["Sim", "Nao", "Em implantacao"] },
+      { name: "prefeituraOleo", label: "Prefeitura", kind: "text", required: true },
+      { name: "cnpjPrefeituraOleo", label: "CNPJ da Prefeitura", kind: "text", required: true },
+      { name: "enderecoOleo", label: "Endereco", kind: "text", required: true },
+      { name: "numeroDocumentoOleo", label: "Numero do MTR, CDF ou declaracao", kind: "text", required: true },
+      { name: "dataDocumentoOleo", label: "Data", kind: "date", required: true },
+      { name: "descricaoResiduoOleo", label: "Descricao do residuo", kind: "text", required: true },
       { name: "pontosColeta", label: "Quantidade de pontos de coleta", kind: "number", required: true },
       { name: "volumeLitros", label: "Volume anual coletado (litros)", kind: "number", required: true },
+      { name: "transportadorOleo", label: "Transportador", kind: "text", required: true },
+      { name: "cnpjTransportadorOleo", label: "CNPJ do transportador", kind: "text", required: true },
+      { name: "licencaTransportadorOleo", label: "Licenca/certidao do transportador", kind: "text", required: true },
+      { name: "receptorOleo", label: "Receptor", kind: "text", required: true },
+      { name: "cnpjReceptorOleo", label: "CNPJ do receptor", kind: "text", required: true },
+      { name: "licencaReceptorOleo", label: "Licenca/certidao do receptor", kind: "text", required: true },
       { name: "destinador", label: "Empresa/cooperativa destinadora", kind: "text", required: true },
+      { name: "responsavelOleo", label: "Responsavel", kind: "text", required: true },
+      { name: "cargoResponsavelOleo", label: "Cargo", kind: "text", required: true },
+      { name: "emailResponsavelOleo", label: "E-mail", kind: "text", required: true },
+      { name: "telefoneResponsavelOleo", label: "Telefone", kind: "text", required: true },
       { name: "relatorioOleo", label: "Upload do relatorio anual de coleta", kind: "file", required: true },
+      { name: "mtrOleoUpload", label: "Upload MTR", kind: "file", required: true },
+      { name: "cdfOleoUpload", label: "Upload CDF", kind: "file", required: true },
+      { name: "declaracaoDestinacaoOleo", label: "Upload declaracao de destinacao", kind: "file", required: true },
+      { name: "licencasAmbientaisOleo", label: "Upload licencas ambientais", kind: "file", required: true },
+      { name: "certidoesInexigibilidadeOleo", label: "Upload certidoes de inexigibilidade", kind: "file", required: true },
       { name: "comprovanteDestinacao", label: "Upload do comprovante de destinacao", kind: "file", required: true },
+    ],
+  },
+  {
+    id: "residuos_remediacao_vazadouros",
+    module: "residuos",
+    title: "Remediacao de Vazadouros",
+    description: "Controla status de vazadouros/lixoes, LAR, projeto de remediacao, condicionantes e monitoramento.",
+    spreadsheet: true,
+    fields: [
+      { name: "existeVazadouro", label: "Existe vazadouro/lixao?", kind: "select", required: true, options: ["Sim", "Nao"] },
+      { name: "estagioRemediacao", label: "Estagio", kind: "select", required: true, options: ["Nao remediado", "Em remediacao", "Remediado"] },
+      { name: "possuiLarValida", label: "Existe LAR valida?", kind: "select", required: true, options: ["Sim", "Nao"] },
+      { name: "numeroLar", label: "Numero da licenca", kind: "text", required: true },
+      { name: "validadeLar", label: "Validade da licenca", kind: "date", required: true },
+      { name: "descricaoObras", label: "Descricao das obras", kind: "textarea", required: true },
+      { name: "cronogramaRemediacao", label: "Cronograma", kind: "textarea", required: true },
+      { name: "anoExecucaoRemediacao", label: "Ano de execucao", kind: "number", required: true },
+      { name: "responsavelTecnicoRemediacao", label: "Responsavel tecnico", kind: "text", required: true },
+      { name: "larUpload", label: "Upload Licenca Ambiental de Recuperacao", kind: "file", required: true },
+      { name: "condicionantesUpload", label: "Upload relatorio de condicionantes", kind: "file", required: true },
+      { name: "projetoRemediacaoUpload", label: "Upload projeto de remediacao", kind: "file", required: true },
+      { name: "cronogramaUpload", label: "Upload cronograma de execucao", kind: "file", required: true },
+      { name: "monitoramentoUpload", label: "Upload relatorio de monitoramento", kind: "file", required: true },
     ],
   },
   {
@@ -274,14 +396,23 @@ const digitalForms: DigitalFormConfig[] = [
     spreadsheet: false,
     fields: [
       { name: "possuiPmsb", label: "Possui PMSB em versao final?", kind: "select", required: true, options: ["Sim", "Nao"] },
+      { name: "abrangeAguaPmsb", label: "Abrange abastecimento de agua?", kind: "select", required: true, options: ["Sim", "Nao"] },
+      { name: "abrangeEsgotoPmsb", label: "Abrange esgotamento sanitario?", kind: "select", required: true, options: ["Sim", "Nao"] },
+      { name: "abrangeResiduosPmsb", label: "Abrange residuos solidos?", kind: "select", required: true, options: ["Sim", "Nao"] },
+      { name: "abrangeDrenagemPmsb", label: "Abrange drenagem urbana?", kind: "select", required: true, options: ["Sim", "Nao"] },
+      { name: "anoPlanoPmsb", label: "Ano do plano", kind: "number", required: true },
       { name: "dentroPrazo", label: "Dentro do prazo de revisao?", kind: "select", required: true, options: ["Sim", "Nao"] },
       { name: "componentes", label: "Componentes contemplados", kind: "select", required: true, options: ["4 componentes", "2 ou 3 componentes", "Menos de 2 componentes"] },
       { name: "instituidoLegalmente", label: "Instituido por Lei ou Decreto Municipal?", kind: "select", required: true, options: ["Sim", "Nao"] },
       { name: "conteudoMinimo", label: "Percentual do conteudo minimo atendido (%)", kind: "number", required: true },
       { name: "controleSocialPmsb", label: "Mecanismo de controle social", kind: "select", required: true, options: ["Conselho", "Audiencia publica", "Consulta publica", "Conferencia", "Nao comprovado"] },
+      { name: "estaVigentePmsb", label: "Esta vigente?", kind: "select", required: true, options: ["Sim", "Nao"] },
       { name: "pmsbUpload", label: "Upload do PMSB datado", kind: "file", required: true },
       { name: "leiDecretoUpload", label: "Upload da Lei/Decreto de instituicao", kind: "file", required: true },
       { name: "audienciaUpload", label: "Upload do relatorio/ata/lista de presenca", kind: "file", required: true },
+      { name: "listaPresencaPmsbUpload", label: "Upload lista de presenca", kind: "file", required: true },
+      { name: "publicacaoOficialPmsbUpload", label: "Upload publicacao oficial", kind: "file", required: true },
+      { name: "revisaoPmsbUpload", label: "Upload revisao", kind: "file", required: true },
       { name: "matrizPmsbUpload", label: "Upload da matriz de conteudo minimo", kind: "file", required: true },
     ],
   },
@@ -317,6 +448,15 @@ const digitalForms: DigitalFormConfig[] = [
       { name: "planoManejo", label: "Status do Plano de Manejo", kind: "select", required: true, options: ["Atualizado", "Vencido", "Inexistente", "Em revisao"] },
       { name: "dataPublicacaoPlanoManejo", label: "Data de publicacao/aprovacao do Plano de Manejo", kind: "date", required: true },
       { name: "conselhoGestor", label: "Status do Conselho Gestor", kind: "select", required: true, options: ["Ativo", "Inativo", "Inexistente", "Pendente"] },
+      { name: "sedeAdministrativa", label: "Sede administrativa", kind: "select", required: true, options: ["Nao possui", "Parcial", "Comprovada"] },
+      { name: "equipeTecnicaUc", label: "Equipe tecnica", kind: "textarea", required: true },
+      { name: "fiscalizacaoUc", label: "Fiscalizacao", kind: "textarea", required: true },
+      { name: "educacaoAmbientalUc", label: "Educacao ambiental", kind: "textarea", required: true },
+      { name: "pesquisaCientificaUc", label: "Pesquisa cientifica", kind: "textarea", required: true },
+      { name: "sinalizacaoUc", label: "Sinalizacao", kind: "select", required: true, options: ["Inexistente", "Parcial", "Adequada"] },
+      { name: "regularizacaoFundiaria", label: "Regularizacao fundiaria", kind: "select", required: true, options: ["Nao iniciada", "Em andamento", "Regularizada"] },
+      { name: "grauConservacao", label: "Grau de conservacao", kind: "select", required: true, options: ["Baixo", "Medio", "Alto"] },
+      { name: "grauImplementacao", label: "Grau de implementacao", kind: "select", required: true, options: ["Baixo", "Medio", "Alto"] },
       { name: "infraestrutura", label: "Infraestrutura e equipamentos comprovados", kind: "textarea", required: false },
       { name: "atoCriacaoUc", label: "Upload do Ato de Criacao/Decreto da UC", kind: "file", required: true },
       { name: "memorialDescritivoUc", label: "Upload do memorial descritivo/coordenadas geograficas", kind: "file", required: true },
@@ -326,6 +466,66 @@ const digitalForms: DigitalFormConfig[] = [
       { name: "atasConselhoUc", label: "Upload atas do Conselho Gestor", kind: "file", required: true },
       { name: "fotosInfra", label: "Upload fotos/relatorio de infraestrutura", kind: "file", required: true },
       { name: "relatorioInvestimentoGestaoUc", label: "Upload relatorio de investimentos, guarda-parques, brigadistas e combate a incendios", kind: "file", required: true },
+      { name: "comprovantesAcoesUc", label: "Upload comprovantes das acoes", kind: "file", required: true },
+    ],
+  },
+  {
+    id: "uc_municipais",
+    module: "uc",
+    title: "Areas Protegidas Municipais",
+    description: "Formulario especifico para UCs municipais, com os mesmos criterios de qualidade de gestao filtrados para a esfera municipal.",
+    spreadsheet: true,
+    fields: [
+      { name: "nomeUcMunicipal", label: "Nome da UC municipal", kind: "text", required: true },
+      { name: "categoriaUcMunicipal", label: "Categoria", kind: "select", required: true, options: ["PI", "US"] },
+      { name: "areaTotalUcMunicipal", label: "Area total (ha)", kind: "number", required: true },
+      { name: "areaMunicipioUcMunicipal", label: "Area no municipio (ha)", kind: "number", required: true },
+      { name: "atoCriacaoUcMunicipal", label: "Ato de criacao", kind: "text", required: true },
+      { name: "planoManejoUcMunicipal", label: "Plano de manejo", kind: "select", required: true, options: ["Nao possui", "Desatualizado", "Atualizado"] },
+      { name: "conselhoGestorUcMunicipal", label: "Conselho gestor", kind: "select", required: true, options: ["Inexistente", "Instituido", "Ativo"] },
+      { name: "sedeUcMunicipal", label: "Sede administrativa", kind: "select", required: true, options: ["Nao possui", "Parcial", "Comprovada"] },
+      { name: "equipeUcMunicipal", label: "Equipe tecnica", kind: "textarea", required: true },
+      { name: "fiscalizacaoUcMunicipal", label: "Fiscalizacao", kind: "textarea", required: true },
+      { name: "educacaoUcMunicipal", label: "Educacao ambiental", kind: "textarea", required: true },
+      { name: "pesquisaUcMunicipal", label: "Pesquisa cientifica", kind: "textarea", required: true },
+      { name: "infraUcMunicipal", label: "Infraestrutura", kind: "textarea", required: true },
+      { name: "sinalizacaoUcMunicipal", label: "Sinalizacao", kind: "select", required: true, options: ["Inexistente", "Parcial", "Adequada"] },
+      { name: "regularizacaoUcMunicipal", label: "Regularizacao fundiaria", kind: "select", required: true, options: ["Nao iniciada", "Em andamento", "Regularizada"] },
+      { name: "grauConservacaoUcMunicipal", label: "Grau de conservacao", kind: "select", required: true, options: ["Baixo", "Medio", "Alto"] },
+      { name: "grauImplementacaoUcMunicipal", label: "Grau de implementacao", kind: "select", required: true, options: ["Baixo", "Medio", "Alto"] },
+      { name: "atoLegalUcMunicipalUpload", label: "Upload ato legal de criacao", kind: "file", required: true },
+      { name: "mapaUcMunicipalUpload", label: "Upload mapa/georreferenciamento", kind: "file", required: true },
+      { name: "planoManejoUcMunicipalUpload", label: "Upload plano de manejo", kind: "file", required: true },
+      { name: "atasUcMunicipalUpload", label: "Upload atas do conselho", kind: "file", required: true },
+      { name: "relatorioGestaoUcMunicipalUpload", label: "Upload relatorio de gestao", kind: "file", required: true },
+      { name: "fotosUcMunicipalUpload", label: "Upload fotos", kind: "file", required: true },
+      { name: "comprovantesUcMunicipalUpload", label: "Upload comprovantes das acoes", kind: "file", required: true },
+    ],
+  },
+  {
+    id: "uc_rppn_privada",
+    module: "uc",
+    title: "RPPN / Unidade de Conservacao Privada",
+    description: "Cadastro de RPPN e areas protegidas privadas com ato de reconhecimento, plano de manejo e acoes de conservacao.",
+    spreadsheet: true,
+    fields: [
+      { name: "nomeRppn", label: "Nome da RPPN", kind: "text", required: true },
+      { name: "proprietarioRppn", label: "Proprietario", kind: "text", required: true },
+      { name: "areaRppn", label: "Area (ha)", kind: "number", required: true },
+      { name: "municipioRppn", label: "Municipio", kind: "text", required: true },
+      { name: "atoReconhecimentoRppn", label: "Ato de reconhecimento", kind: "text", required: true },
+      { name: "planoManejoRppn", label: "Plano de manejo", kind: "select", required: true, options: ["Nao possui", "Em elaboracao", "Aprovado"] },
+      { name: "acoesConservacaoRppn", label: "Acoes de conservacao", kind: "textarea", required: true },
+      { name: "fiscalizacaoRppn", label: "Fiscalizacao", kind: "textarea", required: true },
+      { name: "pesquisaRppn", label: "Pesquisa", kind: "textarea", required: true },
+      { name: "educacaoRppn", label: "Educacao ambiental", kind: "textarea", required: true },
+      { name: "infraestruturaRppn", label: "Infraestrutura", kind: "textarea", required: true },
+      { name: "portariaRppnUpload", label: "Upload portaria/ato de reconhecimento", kind: "file", required: true },
+      { name: "mapaRppnUpload", label: "Upload mapa", kind: "file", required: true },
+      { name: "planoManejoRppnUpload", label: "Upload plano de manejo", kind: "file", required: true },
+      { name: "relatorioAtividadesRppnUpload", label: "Upload relatorio de atividades", kind: "file", required: true },
+      { name: "fotosRppnUpload", label: "Upload fotos", kind: "file", required: true },
+      { name: "documentosRppnUpload", label: "Upload documentos comprobatorios", kind: "file", required: true },
     ],
   },
   {
@@ -337,12 +537,21 @@ const digitalForms: DigitalFormConfig[] = [
     spreadsheet: false,
     fields: [
       { name: "possuiPmma", label: "Possui PMMA?", kind: "select", required: true, options: ["Sim", "Nao", "Em elaboracao"] },
+      { name: "anoElaboracaoPmma", label: "Ano de elaboracao", kind: "number", required: true },
+      { name: "atoInstituicaoPmma", label: "Ato de instituicao", kind: "text", required: true },
+      { name: "diagnosticoAmbientalPmma", label: "Diagnostico ambiental", kind: "textarea", required: true },
+      { name: "areasPrioritariasPmma", label: "Areas prioritarias", kind: "textarea", required: true },
       { name: "aprovadoConselho", label: "Aprovado pelo Conselho Municipal de Meio Ambiente?", kind: "select", required: true, options: ["Sim", "Nao"] },
       { name: "dataAprovacao", label: "Data de aprovacao", kind: "date", required: true },
       { name: "acoesRestauracao", label: "Acoes de conservacao/restauracao executadas", kind: "textarea", required: true },
+      { name: "estagioPmma", label: "Estagio", kind: "select", required: true, options: ["Planejado", "Parcial", "Implementado"] },
       { name: "pmmaUpload", label: "Upload do PMMA", kind: "file", required: true },
+      { name: "decretoLeiPmmaUpload", label: "Upload decreto/lei", kind: "file", required: true },
       { name: "ataPmmaUpload", label: "Upload ata de aprovacao do PMMA", kind: "file", required: true },
       { name: "relatorioAcoes", label: "Upload relatorio das acoes", kind: "file", required: true },
+      { name: "mapasPmmaUpload", label: "Upload mapas", kind: "file", required: true },
+      { name: "fotosPmmaUpload", label: "Upload fotos", kind: "file", required: true },
+      { name: "publicacaoOficialPmmaUpload", label: "Upload publicacao oficial", kind: "file", required: true },
     ],
   },
   {
@@ -389,6 +598,18 @@ const digitalForms: DigitalFormConfig[] = [
       { name: "contaFundo", label: "Conta bancaria do Fundo", kind: "text", required: true },
       { name: "normaRepasse", label: "Norma de repasse do ICMS Ecologico", kind: "text", required: true },
       { name: "percentualRepasse", label: "Percentual previsto de repasse (%)", kind: "number", required: true },
+      { name: "repasseJaneiro", label: "Valor repassado Janeiro (R$)", kind: "number", required: true },
+      { name: "repasseFevereiro", label: "Valor repassado Fevereiro (R$)", kind: "number", required: true },
+      { name: "repasseMarco", label: "Valor repassado Marco (R$)", kind: "number", required: true },
+      { name: "repasseAbril", label: "Valor repassado Abril (R$)", kind: "number", required: true },
+      { name: "repasseMaio", label: "Valor repassado Maio (R$)", kind: "number", required: true },
+      { name: "repasseJunho", label: "Valor repassado Junho (R$)", kind: "number", required: true },
+      { name: "repasseJulho", label: "Valor repassado Julho (R$)", kind: "number", required: true },
+      { name: "repasseAgosto", label: "Valor repassado Agosto (R$)", kind: "number", required: true },
+      { name: "repasseSetembro", label: "Valor repassado Setembro (R$)", kind: "number", required: true },
+      { name: "repasseOutubro", label: "Valor repassado Outubro (R$)", kind: "number", required: true },
+      { name: "repasseNovembro", label: "Valor repassado Novembro (R$)", kind: "number", required: true },
+      { name: "repasseDezembro", label: "Valor repassado Dezembro (R$)", kind: "number", required: true },
       { name: "receitaAnualFundo", label: "Receita anual arrecadada pelo Fundo (R$)", kind: "number", required: true },
       { name: "despesaAnualFundo", label: "Despesa anual executada em projetos ambientais (R$)", kind: "number", required: true },
       { name: "leiCondemaUpload", label: "Upload da Lei Municipal de criacao do CONDEMA", kind: "file", required: true },
@@ -421,17 +642,47 @@ const digitalForms: DigitalFormConfig[] = [
       "Formulario dos 15 itens do licenciamento municipal: equipe, infraestrutura, poder de policia, normas, licencas e manifestacoes CONEMA.",
     spreadsheet: true,
     fields: [
+      { name: "realizaLicenciamento", label: "Municipio realiza licenciamento ambiental?", kind: "select", required: true, options: ["Sim", "Nao"] },
+      { name: "normaMunicipalLicenciamento", label: "Norma municipal", kind: "text", required: true },
+      { name: "conselhoMeioAmbienteLicenciamento", label: "Conselho municipal de meio ambiente", kind: "select", required: true, options: ["Sim", "Nao"] },
+      { name: "fundoMunicipalLicenciamento", label: "Fundo municipal", kind: "select", required: true, options: ["Sim", "Nao"] },
       { name: "infraAdministrativa", label: "Infraestrutura administrativa comprovada?", kind: "select", required: true, options: ["Sim", "Nao"] },
       { name: "equipeHabilitada", label: "Profissionais habilitados em numero compativel?", kind: "select", required: true, options: ["Sim", "Nao"] },
       { name: "poderPolicia", label: "Servidores com poder de policia ambiental?", kind: "select", required: true, options: ["Sim", "Nao"] },
       { name: "legislacaoPropria", label: "Legislacao suplementar propria?", kind: "select", required: true, options: ["Sim", "Nao"] },
       { name: "requerimentosRecebidos", label: "Quantidade de requerimentos recebidos no ano", kind: "number", required: true },
+      { name: "processosLicenciadosAno", label: "Processos licenciados no ano", kind: "number", required: true },
+      { name: "tiposLicencasEmitidas", label: "Tipos de licencas emitidas", kind: "textarea", required: true },
       { name: "licencasConcedidas", label: "Quantidade de instrumentos concedidos no ano", kind: "number", required: true },
+      { name: "leiDecretoLicenciamentoUpload", label: "Upload lei/decreto", kind: "file", required: true },
+      { name: "organogramaLicenciamentoUpload", label: "Upload organograma", kind: "file", required: true },
       { name: "infraUpload", label: "Upload descricao/evidencias de infraestrutura", kind: "file", required: true },
       { name: "equipeUpload", label: "Upload relacao de equipe habilitada", kind: "file", required: true },
       { name: "normasUpload", label: "Upload leis/normas de licenciamento e fiscalizacao", kind: "file", required: true },
       { name: "licencasUpload", label: "Upload relacao de licencas concedidas", kind: "file", required: true },
+      { name: "publicacoesLicenciamentoUpload", label: "Upload publicacoes oficiais", kind: "file", required: true },
       { name: "conemaUpload", label: "Upload manifestacao CONEMA 95/2022", kind: "file", required: true },
+    ],
+  },
+  {
+    id: "iqsmma_seguranca_hidrica",
+    module: "iqsmma",
+    title: "Programa Municipal de Seguranca Hidrica",
+    description: "Registra politica, programa, acoes e documentos de seguranca hidrica municipal.",
+    spreadsheet: true,
+    fields: [
+      { name: "possuiAcoesSegurancaHidrica", label: "Municipio possui acoes de seguranca hidrica?", kind: "select", required: true, options: ["Sim", "Nao"] },
+      { name: "estagioSegurancaHidrica", label: "Estagio das acoes", kind: "select", required: true, options: ["Planejadas", "Em implementacao", "Implementadas"] },
+      { name: "politicaPublicada", label: "Existe politica municipal publicada?", kind: "select", required: true, options: ["Sim", "Nao"] },
+      { name: "programaPublicado", label: "Existe programa municipal publicado?", kind: "select", required: true, options: ["Sim", "Nao"] },
+      { name: "objetivosSegurancaHidrica", label: "Objetivos das acoes", kind: "textarea", required: true, placeholder: "Estudos, recursos hidricos, informacoes, oferta hidrica, reducao de consumo, monitoramento, efluentes, saneamento, recuperacao ambiental, PSA, agricultura sustentavel, desassoreamento, inundacoes, drenagem..." },
+      { name: "politicaSegurancaUpload", label: "Upload politica municipal", kind: "file", required: true },
+      { name: "programaSegurancaUpload", label: "Upload programa municipal", kind: "file", required: true },
+      { name: "diarioOficialSegurancaUpload", label: "Upload Diario Oficial", kind: "file", required: true },
+      { name: "termoReferenciaSegurancaUpload", label: "Upload termo de referencia", kind: "file", required: true },
+      { name: "relatoriosSegurancaUpload", label: "Upload relatorios", kind: "file", required: true },
+      { name: "projetosSegurancaUpload", label: "Upload projetos", kind: "file", required: true },
+      { name: "comprovantesSegurancaUpload", label: "Upload comprovantes das acoes", kind: "file", required: true },
     ],
   },
   {
@@ -443,12 +694,20 @@ const digitalForms: DigitalFormConfig[] = [
     spreadsheet: true,
     fields: [
       { name: "possuiPrograma", label: "Possui Programa Municipal de Educacao Ambiental?", kind: "select", required: true, options: ["Sim", "Nao", "Em elaboracao"] },
+      { name: "leiDecretoEducacao", label: "Lei/decreto de instituicao", kind: "text", required: true },
       { name: "acoesExecutadas", label: "Quantidade de acoes executadas no ano", kind: "number", required: true },
+      { name: "publicoAlvoEducacao", label: "Publico-alvo", kind: "text", required: true },
+      { name: "escolasAtendidas", label: "Escolas atendidas", kind: "number", required: true },
+      { name: "participantesEducacao", label: "Numero de participantes", kind: "number", required: true },
+      { name: "periodoAcoesEducacao", label: "Periodo das acoes", kind: "text", required: true },
+      { name: "responsavelEducacao", label: "Responsavel", kind: "text", required: true },
       { name: "publicoAtendido", label: "Publico atendido estimado", kind: "number", required: true },
       { name: "periodicidade", label: "Periodicidade das atividades", kind: "select", required: true, options: ["Anual", "Semestral", "Mensal", "Pontual"] },
       { name: "temas", label: "Temas trabalhados", kind: "textarea", required: true },
       { name: "programaUpload", label: "Upload do programa/plano de educacao ambiental", kind: "file", required: true },
+      { name: "leiDecretoEducacaoUpload", label: "Upload lei/decreto", kind: "file", required: true },
       { name: "relatorioAtividades", label: "Upload relatorio com fotos/listas de presenca", kind: "file", required: true },
+      { name: "materiaisEducativosUpload", label: "Upload materiais educativos", kind: "file", required: true },
     ],
   },
   {
@@ -728,6 +987,40 @@ function loadDraft(formId: string): DraftRecord {
   }
 }
 
+function loadProfile(): UserProfile {
+  try {
+    return JSON.parse(localStorage.getItem(profileKey) || "") as UserProfile;
+  } catch {
+    return { nome: "Tecnico SEMAM", perfil: "Tecnico" };
+  }
+}
+
+function saveProfile(profile: UserProfile) {
+  localStorage.setItem(profileKey, JSON.stringify(profile));
+}
+
+function auditKey(formId: string) {
+  return `${draftPrefix}:audit:${formId}`;
+}
+
+function commentsKey(formId: string) {
+  return `${draftPrefix}:comments:${formId}`;
+}
+
+function appendAudit(formId: string, text: string) {
+  const current = JSON.parse(localStorage.getItem(auditKey(formId)) || "[]") as string[];
+  const next = [`${new Date().toLocaleString("pt-BR")} - ${text}`, ...current].slice(0, 8);
+  localStorage.setItem(auditKey(formId), JSON.stringify(next));
+}
+
+function loadStringList(key: string) {
+  try {
+    return JSON.parse(localStorage.getItem(key) || "[]") as string[];
+  } catch {
+    return [];
+  }
+}
+
 function reportStorageKey(reportId: string) {
   return `${reportPrefix}:${reportId}`;
 }
@@ -855,10 +1148,95 @@ function CompletionDashboard() {
   );
 }
 
+function AccessPanel({ profile, onChange }: { profile: UserProfile; onChange: (profile: UserProfile) => void }) {
+  function update(next: UserProfile) {
+    saveProfile(next);
+    onChange(next);
+  }
+
+  return (
+    <section className="access-panel">
+      <label>
+        Usuario
+        <input value={profile.nome} onChange={(event) => update({ ...profile, nome: event.target.value })} />
+      </label>
+      <label>
+        Perfil
+        <select value={profile.perfil} onChange={(event) => update({ ...profile, perfil: event.target.value as UserProfile["perfil"] })}>
+          <option>Administrador</option>
+          <option>Gestor Municipal</option>
+          <option>Tecnico</option>
+          <option>Visualizador</option>
+        </select>
+      </label>
+      <Badge tone={profile.perfil === "Visualizador" ? "blue" : "green"}>{profile.perfil}</Badge>
+    </section>
+  );
+}
+
+function ScoreSimulatorPanel() {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const onStorage = () => setTick((value) => value + 1);
+    window.addEventListener("draft-saved", onStorage);
+    return () => window.removeEventListener("draft-saved", onStorage);
+  }, []);
+
+  const rows = useMemo(() => scoreAxes.map((axis) => {
+    const completed = axis.formIds.filter((formId) => {
+      const form = digitalForms.find((item) => item.id === formId);
+      return form ? getFormStatus(form, loadDraft(formId)) === "completo" : false;
+    }).length;
+    const ratio = completed / axis.formIds.length;
+    const score = ratio * axis.weight * 100;
+    return { ...axis, completed, total: axis.formIds.length, ratio, score };
+  }), [tick]);
+
+  const totalScore = rows.reduce((sum, row) => sum + row.score, 0);
+  const pending = rows
+    .filter((row) => row.completed < row.total)
+    .sort((a, b) => b.weight - a.weight)
+    .slice(0, 3);
+
+  return (
+    <section className="simulator-panel">
+      <div className="section-header">
+        <div>
+          <h2>Simulador de Pontuacao</h2>
+          <p>Estimativa baseada nos pesos do roteiro e na conclusao dos formularios.</p>
+        </div>
+        <strong>{numberPt(totalScore, 2)} pts</strong>
+      </div>
+      <div className="grid three">
+        {rows.map((row) => (
+          <MetricCard
+            key={row.key}
+            title={row.label}
+            value={`${numberPt(row.score, 2)} pts`}
+            helper={`${row.completed}/${row.total} formularios completos - peso ${numberPt(row.weight * 100, 0)}%`}
+            tone={row.completed === row.total ? "green" : "amber"}
+          />
+        ))}
+      </div>
+      <div className="alerts-list">
+        {pending.map((row) => (
+          <article key={row.key} className="risk medio">
+            <Badge tone="amber">Impacto {numberPt(row.weight * 100, 0)}%</Badge>
+            <h3>{row.label}</h3>
+            <p>Completar este eixo tende a aumentar a pontuacao estimada e reduzir pendencias no dossie.</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function DigitalForm({ config }: { config: DigitalFormConfig }) {
   const [draft, setDraft] = useState<DraftRecord>(() => loadDraft(config.id));
   const [uploadingField, setUploadingField] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState("");
+  const [comment, setComment] = useState("");
+  const [auditTick, setAuditTick] = useState(0);
   const didMount = useRef(false);
   const status = getFormStatus(config, draft);
   const checklist = getChecklist(config, draft);
@@ -886,7 +1264,18 @@ function DigitalForm({ config }: { config: DigitalFormConfig }) {
 
   function saveDraft() {
     localStorage.setItem(storageKey(config.id), JSON.stringify(draft));
+    appendAudit(config.id, "Rascunho salvo manualmente");
+    setAuditTick((value) => value + 1);
     window.dispatchEvent(new Event("draft-saved"));
+  }
+
+  function addComment() {
+    if (!comment.trim()) return;
+    const current = loadStringList(commentsKey(config.id));
+    localStorage.setItem(commentsKey(config.id), JSON.stringify([`${new Date().toLocaleString("pt-BR")} - ${comment.trim()}`, ...current].slice(0, 8)));
+    appendAudit(config.id, "Comentario interno adicionado");
+    setComment("");
+    setAuditTick((value) => value + 1);
   }
 
   async function handleFileChange(field: FieldConfig, file?: File) {
@@ -977,6 +1366,20 @@ function DigitalForm({ config }: { config: DigitalFormConfig }) {
           </div>
         ))}
         {pending.length === 0 && <div className="done"><span>OK</span>Formulario completo para revisao tecnica.</div>}
+      </div>
+
+      <div className="audit-tools">
+        <label>
+          Comentario interno do modulo
+          <textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Registre uma observacao de conferencia, pendencia ou decisao tecnica." />
+        </label>
+        <button type="button" onClick={addComment}>Adicionar comentario</button>
+        <div>
+          <h4>Historico recente</h4>
+          {loadStringList(auditKey(config.id)).map((item) => <p key={item}>{item}</p>)}
+          {loadStringList(commentsKey(config.id)).map((item) => <p key={item}>Comentario: {item}</p>)}
+          {auditTick < 0 && null}
+        </div>
       </div>
 
       <div className="form-actions">
@@ -1626,6 +2029,7 @@ function ConsolidadorPanel() {
         <MetricCard title="Residuos" value="IRS" helper="Fator de Reciclagem e coleta seletiva." />
         <MetricCard title="Institucional" value="IQSMMA" helper="CONDEMA e Fundo Municipal." />
       </div>
+      <ScoreSimulatorPanel />
       <ModuleForms module="ifca" />
       <div className="status-footer green">PRONTO PARA OPERACAO ASSISTIDA DO MVP</div>
     </section>
@@ -1648,6 +2052,8 @@ function Table({ columns, rows }: { columns: string[]; rows: Array<Array<React.R
 
 function App() {
   const [tab, setTab] = useState("residuos");
+  const [profile, setProfile] = useState<UserProfile>(() => loadProfile());
+  const [cycleYear, setCycleYear] = useState(String(new Date().getFullYear()));
   const tabs = [
     ["conformidade", "Central de Conformidade"],
     ["modelos", "Modelos de Relatorios"],
@@ -1664,10 +2070,19 @@ function App() {
         <div>
           <span>SEMAM Nova Iguacu</span>
           <h1>ICMS Ecologico</h1>
-          <p>Painel interno para monitoramento tecnico, evidencias e fechamento do ciclo anual.</p>
+          <p>Painel interno para monitoramento tecnico, evidencias e fechamento do ciclo anual. Ano-base {cycleYear}.</p>
         </div>
-        <a href="/api/health" target="_blank" rel="noreferrer">API online</a>
+        <div className="hero-actions">
+          <label>
+            Ano-base
+            <input value={cycleYear} onChange={(event) => setCycleYear(event.target.value)} />
+          </label>
+          <button type="button" onClick={() => setTab("ifca")}>Simular Pontuacao</button>
+          <button type="button" onClick={() => window.print()}>Gerar Dossie Final</button>
+          <a href="/api/health" target="_blank" rel="noreferrer">API online</a>
+        </div>
       </header>
+      <AccessPanel profile={profile} onChange={setProfile} />
       <CompletionDashboard />
       <nav className="tabs">
         {tabs.map(([id, label]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>{label}</button>)}

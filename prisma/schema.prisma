@@ -44,6 +44,107 @@ model usuarios {
   alertas_pendencias alertas_pendencias[]
 }
 
+model municipios {
+  id              BigInt   @id @default(autoincrement())
+  nome            String   @db.VarChar(150)
+  codigo_ibge     String?  @db.VarChar(20)
+  uf              String   @default("RJ") @db.VarChar(2)
+  cnpj_prefeitura String?  @db.VarChar(18)
+  ativo           Boolean  @default(true)
+  criado_em       DateTime @default(now())
+
+  @@unique([nome, uf])
+}
+
+model modulos_sistema {
+  id        BigInt   @id @default(autoincrement())
+  codigo    String   @unique @db.VarChar(80)
+  nome      String   @db.VarChar(180)
+  eixo_ifca String   @db.VarChar(80)
+  peso      Decimal? @db.Decimal(6, 4)
+  ativo     Boolean  @default(true)
+  criado_em DateTime @default(now())
+}
+
+model formularios_digitais {
+  id            BigInt   @id @default(autoincrement())
+  modulo_codigo String   @db.VarChar(80)
+  codigo        String   @unique @db.VarChar(100)
+  titulo        String   @db.VarChar(180)
+  versao        String   @default("1.0") @db.VarChar(20)
+  schema_json   Json
+  ativo         Boolean  @default(true)
+  criado_em     DateTime @default(now())
+}
+
+model respostas_formularios {
+  id                BigInt   @id @default(autoincrement())
+  ciclo_icms_id     BigInt?
+  municipio_id      BigInt?
+  formulario_codigo String   @db.VarChar(100)
+  usuario_id        BigInt?
+  status            String   @default("Rascunho") @db.VarChar(30)
+  resposta_json     Json
+  criado_em         DateTime @default(now())
+  atualizado_em     DateTime @updatedAt
+
+  @@index([ciclo_icms_id])
+  @@index([formulario_codigo, status])
+}
+
+model checklists_formularios {
+  id                     BigInt   @id @default(autoincrement())
+  resposta_formulario_id BigInt?
+  item                   String   @db.VarChar(220)
+  obrigatorio            Boolean  @default(true)
+  completo               Boolean  @default(false)
+  documento_exigido      Boolean  @default(false)
+  observacoes            String?
+  criado_em              DateTime @default(now())
+
+  @@index([resposta_formulario_id])
+  @@index([completo, obrigatorio])
+}
+
+model pontuacoes_estimadas {
+  id               BigInt   @id @default(autoincrement())
+  ciclo_icms_id    BigInt?
+  municipio_id     BigInt?
+  eixo             String   @db.VarChar(80)
+  peso             Decimal  @db.Decimal(6, 4)
+  nota_estimada    Decimal  @default(0) @db.Decimal(14, 6)
+  impacto_pendente Decimal  @default(0) @db.Decimal(14, 6)
+  pendencias_json  Json?
+  calculado_em     DateTime @default(now())
+
+  @@index([ciclo_icms_id, eixo])
+}
+
+model historico_alteracoes {
+  id          BigInt   @id @default(autoincrement())
+  usuario_id  BigInt?
+  entidade    String   @db.VarChar(120)
+  entidade_id BigInt?
+  acao        String   @db.VarChar(60)
+  antes_json  Json?
+  depois_json Json?
+  criado_em   DateTime @default(now())
+
+  @@index([entidade, entidade_id])
+}
+
+model comentarios_internos {
+  id            BigInt   @id @default(autoincrement())
+  ciclo_icms_id BigInt?
+  modulo_codigo String   @db.VarChar(80)
+  usuario_id    BigInt?
+  comentario    String
+  resolvido     Boolean  @default(false)
+  criado_em     DateTime @default(now())
+
+  @@index([ciclo_icms_id, modulo_codigo])
+}
+
 model documentos_evidencias {
   id                 BigInt    @id @default(autoincrement())
   ciclo_icms_id      BigInt?
@@ -350,6 +451,98 @@ model calculo_irs_anual {
   calculado_em          DateTime @default(now())
 
   ciclos_icms ciclos_icms @relation(fields: [ciclo_icms_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+}
+
+model consorcios_intermunicipais_residuos {
+  id                               BigInt    @id @default(autoincrement())
+  ciclo_icms_id                    BigInt?
+  participa_consorcio              Boolean   @default(false)
+  nome_consorcio                   String?   @db.VarChar(180)
+  cnpj_consorcio                   String?   @db.VarChar(18)
+  data_adesao                      DateTime? @db.Date
+  contrato_rateio_numero           String?   @db.VarChar(100)
+  documento_formacao_id            BigInt?
+  protocolo_intencoes_documento_id BigInt?
+  estatuto_documento_id            BigInt?
+  lei_autorizativa_documento_id    BigInt?
+  cnpj_documento_id                BigInt?
+  contrato_rateio_documento_id     BigInt?
+  status_validacao                 String    @default("Pendente") @db.VarChar(30)
+  observacoes                      String?
+  criado_em                        DateTime  @default(now())
+
+  @@index([ciclo_icms_id])
+}
+
+model remediacao_vazadouros {
+  id                              BigInt    @id @default(autoincrement())
+  ciclo_icms_id                   BigInt?
+  existe_vazadouro                Boolean   @default(false)
+  estagio                         String    @db.VarChar(40)
+  possui_lar_valida               Boolean   @default(false)
+  numero_licenca                  String?   @db.VarChar(100)
+  validade_licenca                DateTime? @db.Date
+  descricao_obras                 String?
+  cronograma                      String?
+  ano_execucao                    Int?
+  responsavel_tecnico             String?   @db.VarChar(180)
+  lar_documento_id                BigInt?
+  condicionantes_documento_id     BigInt?
+  projeto_remediacao_documento_id BigInt?
+  cronograma_documento_id         BigInt?
+  monitoramento_documento_id      BigInt?
+  status_validacao                String    @default("Pendente") @db.VarChar(30)
+  criado_em                       DateTime  @default(now())
+
+  @@index([ciclo_icms_id])
+}
+
+model rppn_unidades_privadas {
+  id                                BigInt   @id @default(autoincrement())
+  ciclo_icms_id                     BigInt?
+  nome                              String   @db.VarChar(180)
+  proprietario                      String?  @db.VarChar(180)
+  area_ha                           Decimal? @db.Decimal(14, 4)
+  municipio                         String?  @db.VarChar(120)
+  ato_reconhecimento                String?  @db.VarChar(180)
+  status_plano_manejo               String?  @db.VarChar(40)
+  acoes_conservacao                 String?
+  fiscalizacao                      String?
+  pesquisa                          String?
+  educacao_ambiental                String?
+  infraestrutura                    String?
+  ato_documento_id                  BigInt?
+  mapa_documento_id                 BigInt?
+  plano_manejo_documento_id         BigInt?
+  relatorio_atividades_documento_id BigInt?
+  fotos_documento_id                BigInt?
+  documentos_comprobatorios_id      BigInt?
+  status_validacao                  String   @default("Pendente") @db.VarChar(30)
+  criado_em                         DateTime @default(now())
+
+  @@index([ciclo_icms_id])
+}
+
+model programas_seguranca_hidrica {
+  id                              BigInt   @id @default(autoincrement())
+  ciclo_icms_id                   BigInt?
+  possui_acoes                    Boolean  @default(false)
+  estagio_acoes                   String?  @db.VarChar(40)
+  politica_municipal_publicada    Boolean  @default(false)
+  programa_municipal_publicado    Boolean  @default(false)
+  objetivos_json                  Json?
+  politica_documento_id           BigInt?
+  programa_documento_id           BigInt?
+  diario_oficial_documento_id     BigInt?
+  termo_referencia_documento_id   BigInt?
+  relatorios_documento_id         BigInt?
+  projetos_documento_id           BigInt?
+  comprovantes_acoes_documento_id BigInt?
+  status_validacao                String   @default("Pendente") @db.VarChar(30)
+  observacoes                     String?
+  criado_em                       DateTime @default(now())
+
+  @@index([ciclo_icms_id])
 }
 
 model bacias_mananciais {
