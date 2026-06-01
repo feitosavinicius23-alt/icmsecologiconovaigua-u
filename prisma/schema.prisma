@@ -22,6 +22,7 @@ model ciclos_icms {
   calculo_irs_anual             calculo_irs_anual?
   laudos_eficiencia_ete         laudos_eficiencia_ete[]
   documentos_evidencias         documentos_evidencias[]
+  condema_municipal             condema_municipal?
   fundo_municipal_meio_ambiente fundo_municipal_meio_ambiente?
   destinacao_final_residuos     destinacao_final_residuos?
   bacias_mananciais             bacias_mananciais[]
@@ -58,22 +59,33 @@ model documentos_evidencias {
   ciclos_icms              ciclos_icms?                    @relation(fields: [ciclo_icms_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
   atas_documento           atas_reunioes[]                 @relation("ataDocumento")
   atas_lista_presenca      atas_reunioes[]                 @relation("ataListaPresenca")
+  condema_lei              condema_municipal[]             @relation("condemaLeiDocumento")
+  condema_decreto_membros  condema_municipal[]             @relation("condemaDecretoMembrosDocumento")
   coleta_seletiva          coleta_seletiva[]
+  coleta_termo_colaboracao coleta_seletiva[]               @relation("coletaTermoColaboracaoDocumento")
   destinacao_licenca       destinacao_final_residuos[]     @relation("destinacaoLicencaDocumento")
   destinacao_contrato      destinacao_final_residuos[]     @relation("destinacaoContratoDocumento")
   destinacao_pesagem       destinacao_final_residuos[]     @relation("destinacaoPesagemDocumento")
   destinacao_recebimento   destinacao_final_residuos[]     @relation("destinacaoRecebimentoDocumento")
+  destinacao_cdf_mtr       destinacao_final_residuos[]     @relation("destinacaoCdfMtrDocumento")
+  destinacao_laudo_lixao   destinacao_final_residuos[]     @relation("destinacaoLaudoLixaoDocumento")
   uc_ato_criacao           unidades_conservacao[]          @relation("ucAtoCriacaoDocumento")
   uc_plano_manejo          unidades_conservacao[]          @relation("ucPlanoManejoDocumento")
   uc_mapa                  unidades_conservacao[]          @relation("ucMapaDocumento")
   uc_fiscalizacao          unidades_conservacao[]          @relation("ucFiscalizacaoDocumento")
+  uc_memorial              unidades_conservacao[]          @relation("ucMemorialDocumento")
+  uc_shapefile             unidades_conservacao[]          @relation("ucShapefileDocumento")
+  uc_investimento_gestao   unidades_conservacao[]          @relation("ucInvestimentoGestaoDocumento")
   bacia_mapa               bacias_mananciais[]             @relation("baciaMapaDocumento")
+  bacia_ato_legal          bacias_mananciais[]             @relation("baciaAtoLegalDocumento")
   captacao_declaracao      pontos_captacao_abastecimento[] @relation("captacaoDeclaracaoDocumento")
   licencas_ambientais_ete  licencas_ambientais_ete[]
   laudos_laudo             laudos_eficiencia_ete[]         @relation("laudoDocumento")
   laudos_certificado       laudos_eficiencia_ete[]         @relation("certificadoDocumento")
   fundo_lei                fundo_municipal_meio_ambiente[] @relation("leiCriacaoDocumento")
   fundo_norma              fundo_municipal_meio_ambiente[] @relation("normaRepasseDocumento")
+  fundo_balanco            fundo_municipal_meio_ambiente[] @relation("balancoFundoDocumento")
+  fundo_execucao           fundo_municipal_meio_ambiente[] @relation("execucaoFundoDocumento")
   repasses_fundo_municipal repasses_fundo_municipal[]
 
   @@index([ciclo_icms_id])
@@ -81,55 +93,90 @@ model documentos_evidencias {
 }
 
 model unidades_conservacao {
-  id                        BigInt   @id @default(autoincrement())
-  nome                      String   @unique @db.VarChar(180)
-  categoria                 String   @db.VarChar(10)
-  esfera                    String   @db.VarChar(20)
-  status_plano_manejo       String   @db.VarChar(30)
-  status_conselho_gestor    String   @db.VarChar(30)
-  area_municipio_ha         Decimal? @db.Decimal(14, 4)
-  ato_criacao_documento_id  BigInt?
-  plano_manejo_documento_id BigInt?
-  mapa_documento_id         BigInt?
-  fiscalizacao_documento_id BigInt?
-  observacoes               String?
-  atualizado_em             DateTime @default(now())
+  id                               BigInt    @id @default(autoincrement())
+  nome                             String    @unique @db.VarChar(180)
+  categoria                        String    @db.VarChar(10)
+  esfera                           String    @db.VarChar(20)
+  status_plano_manejo              String    @db.VarChar(30)
+  status_conselho_gestor           String    @db.VarChar(30)
+  area_total_ha                    Decimal?  @db.Decimal(14, 4)
+  area_municipio_ha                Decimal?  @db.Decimal(14, 4)
+  plano_manejo_data_publicacao     DateTime? @db.Date
+  ato_criacao_documento_id         BigInt?
+  plano_manejo_documento_id        BigInt?
+  mapa_documento_id                BigInt?
+  fiscalizacao_documento_id        BigInt?
+  memorial_descritivo_documento_id BigInt?
+  shapefile_documento_id           BigInt?
+  investimento_gestao_documento_id BigInt?
+  observacoes                      String?
+  atualizado_em                    DateTime  @default(now())
 
-  ato_criacao_documento  documentos_evidencias? @relation("ucAtoCriacaoDocumento", fields: [ato_criacao_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  plano_manejo_documento documentos_evidencias? @relation("ucPlanoManejoDocumento", fields: [plano_manejo_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  mapa_documento         documentos_evidencias? @relation("ucMapaDocumento", fields: [mapa_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  fiscalizacao_documento documentos_evidencias? @relation("ucFiscalizacaoDocumento", fields: [fiscalizacao_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  atas_reunioes          atas_reunioes[]
-  alertas_pendencias     alertas_pendencias[]
+  ato_criacao_documento         documentos_evidencias? @relation("ucAtoCriacaoDocumento", fields: [ato_criacao_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  plano_manejo_documento        documentos_evidencias? @relation("ucPlanoManejoDocumento", fields: [plano_manejo_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  mapa_documento                documentos_evidencias? @relation("ucMapaDocumento", fields: [mapa_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  fiscalizacao_documento        documentos_evidencias? @relation("ucFiscalizacaoDocumento", fields: [fiscalizacao_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  memorial_descritivo_documento documentos_evidencias? @relation("ucMemorialDocumento", fields: [memorial_descritivo_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  shapefile_documento           documentos_evidencias? @relation("ucShapefileDocumento", fields: [shapefile_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  investimento_gestao_documento documentos_evidencias? @relation("ucInvestimentoGestaoDocumento", fields: [investimento_gestao_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  atas_reunioes                 atas_reunioes[]
+  alertas_pendencias            alertas_pendencias[]
+}
+
+model condema_municipal {
+  id                            BigInt    @id @default(autoincrement())
+  ciclo_icms_id                 BigInt    @unique
+  lei_criacao_numero            String?   @db.VarChar(80)
+  lei_criacao_data              DateTime? @db.Date
+  lei_criacao_documento_id      BigInt?
+  decreto_nomeacao_numero       String?   @db.VarChar(80)
+  decreto_nomeacao_data         DateTime? @db.Date
+  decreto_nomeacao_documento_id BigInt?
+  mandato_inicio                DateTime? @db.Date
+  mandato_fim                   DateTime? @db.Date
+  status_funcionamento          String    @default("Pendente") @db.VarChar(30)
+  observacoes                   String?
+  criado_em                     DateTime  @default(now())
+
+  ciclos_icms                ciclos_icms            @relation(fields: [ciclo_icms_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  lei_criacao_documento      documentos_evidencias? @relation("condemaLeiDocumento", fields: [lei_criacao_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  decreto_nomeacao_documento documentos_evidencias? @relation("condemaDecretoMembrosDocumento", fields: [decreto_nomeacao_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
 }
 
 model destinacao_final_residuos {
-  id                                   BigInt    @id @default(autoincrement())
-  ciclo_icms_id                        BigInt    @unique
-  tipo_destinacao                      String    @db.VarChar(60)
-  unidade_destino                      String    @db.VarChar(180)
-  municipio_destino                    String    @db.VarChar(120)
-  operador                             String    @db.VarChar(180)
-  numero_licenca                       String    @db.VarChar(100)
-  validade_licenca                     DateTime? @db.Date
-  massa_rsu_anual_t                    Decimal   @default(0) @db.Decimal(14, 3)
-  percentual_rsu_destinado             Decimal   @default(0) @db.Decimal(8, 4)
-  tratamento_percolado                 String?   @db.VarChar(40)
-  captacao_gases                       String?   @db.VarChar(30)
-  possui_lixao_ativo                   Boolean   @default(false)
-  licenca_documento_id                 BigInt?
-  contrato_documento_id                BigInt?
-  relatorio_pesagem_documento_id       BigInt?
-  comprovante_recebimento_documento_id BigInt?
-  status_validacao                     String    @default("Pendente") @db.VarChar(30)
-  observacoes                          String?
-  criado_em                            DateTime  @default(now())
+  id                                    BigInt    @id @default(autoincrement())
+  ciclo_icms_id                         BigInt    @unique
+  tipo_destinacao                       String    @db.VarChar(60)
+  unidade_destino                       String    @db.VarChar(180)
+  municipio_destino                     String    @db.VarChar(120)
+  operador                              String    @db.VarChar(180)
+  numero_licenca                        String    @db.VarChar(100)
+  validade_licenca                      DateTime? @db.Date
+  massa_rsu_anual_t                     Decimal   @default(0) @db.Decimal(14, 3)
+  volume_total_rsu_gerado_t             Decimal   @default(0) @db.Decimal(14, 3)
+  volume_rejeitos_destinados_t          Decimal   @default(0) @db.Decimal(14, 3)
+  percentual_rsu_destinado              Decimal   @default(0) @db.Decimal(8, 4)
+  cnpj_aterro_receptor                  String?   @db.VarChar(18)
+  tratamento_percolado                  String?   @db.VarChar(40)
+  captacao_gases                        String?   @db.VarChar(30)
+  possui_lixao_ativo                    Boolean   @default(false)
+  licenca_documento_id                  BigInt?
+  contrato_documento_id                 BigInt?
+  relatorio_pesagem_documento_id        BigInt?
+  comprovante_recebimento_documento_id  BigInt?
+  cdf_mtr_documento_id                  BigInt?
+  laudo_inexistencia_lixao_documento_id BigInt?
+  status_validacao                      String    @default("Pendente") @db.VarChar(30)
+  observacoes                           String?
+  criado_em                             DateTime  @default(now())
 
-  ciclos_icms                       ciclos_icms            @relation(fields: [ciclo_icms_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  licenca_documento                 documentos_evidencias? @relation("destinacaoLicencaDocumento", fields: [licenca_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  contrato_documento                documentos_evidencias? @relation("destinacaoContratoDocumento", fields: [contrato_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  relatorio_pesagem_documento       documentos_evidencias? @relation("destinacaoPesagemDocumento", fields: [relatorio_pesagem_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  comprovante_recebimento_documento documentos_evidencias? @relation("destinacaoRecebimentoDocumento", fields: [comprovante_recebimento_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  ciclos_icms                        ciclos_icms            @relation(fields: [ciclo_icms_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  licenca_documento                  documentos_evidencias? @relation("destinacaoLicencaDocumento", fields: [licenca_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  contrato_documento                 documentos_evidencias? @relation("destinacaoContratoDocumento", fields: [contrato_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  relatorio_pesagem_documento        documentos_evidencias? @relation("destinacaoPesagemDocumento", fields: [relatorio_pesagem_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  comprovante_recebimento_documento  documentos_evidencias? @relation("destinacaoRecebimentoDocumento", fields: [comprovante_recebimento_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  cdf_mtr_documento                  documentos_evidencias? @relation("destinacaoCdfMtrDocumento", fields: [cdf_mtr_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  laudo_inexistencia_lixao_documento documentos_evidencias? @relation("destinacaoLaudoLixaoDocumento", fields: [laudo_inexistencia_lixao_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
 }
 
 model atas_reunioes {
@@ -139,6 +186,9 @@ model atas_reunioes {
   unidade_conservacao_id      BigInt?
   orgao_colegiado             String   @db.VarChar(40)
   data_reuniao                DateTime @db.Date
+  carater_reuniao             String?  @db.VarChar(30)
+  quorum_governamental        Int?
+  quorum_nao_governamental    Int?
   numero_ata                  String   @db.VarChar(50)
   caminho_pdf                 String
   documento_evidencia_id      BigInt?
@@ -166,23 +216,27 @@ model atas_reunioes {
 }
 
 model coleta_seletiva {
-  id                         BigInt   @id @default(autoincrement())
-  ciclo_icms_id              BigInt?
-  ano_referencia             Int
-  mes_referencia             Int
-  nome_cooperativa           String   @db.VarChar(180)
-  peso_papel_t               Decimal  @default(0) @db.Decimal(12, 3)
-  peso_plastico_t            Decimal  @default(0) @db.Decimal(12, 3)
-  peso_vidro_t               Decimal  @default(0) @db.Decimal(12, 3)
-  peso_metal_t               Decimal  @default(0) @db.Decimal(12, 3)
-  caminho_mtr_ou_nota_fiscal String
-  documento_evidencia_id     BigInt?
-  status_dado                String   @default("Pendente") @db.VarChar(30)
-  observacoes                String?
-  criado_em                  DateTime @default(now())
+  id                             BigInt   @id @default(autoincrement())
+  ciclo_icms_id                  BigInt?
+  ano_referencia                 Int
+  mes_referencia                 Int
+  nome_cooperativa               String   @db.VarChar(180)
+  peso_papel_t                   Decimal  @default(0) @db.Decimal(12, 3)
+  peso_plastico_t                Decimal  @default(0) @db.Decimal(12, 3)
+  peso_vidro_t                   Decimal  @default(0) @db.Decimal(12, 3)
+  peso_metal_t                   Decimal  @default(0) @db.Decimal(12, 3)
+  caminho_mtr_ou_nota_fiscal     String
+  documento_evidencia_id         BigInt?
+  cnpj_cooperativa               String?  @db.VarChar(18)
+  numero_catadores_cooperados    Int?
+  termo_colaboracao_documento_id BigInt?
+  status_dado                    String   @default("Pendente") @db.VarChar(30)
+  observacoes                    String?
+  criado_em                      DateTime @default(now())
 
-  ciclos_icms           ciclos_icms?           @relation(fields: [ciclo_icms_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  documentos_evidencias documentos_evidencias? @relation(fields: [documento_evidencia_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  ciclos_icms                 ciclos_icms?           @relation(fields: [ciclo_icms_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  documentos_evidencias       documentos_evidencias? @relation(fields: [documento_evidencia_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  termo_colaboracao_documento documentos_evidencias? @relation("coletaTermoColaboracaoDocumento", fields: [termo_colaboracao_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
   @@unique([ano_referencia, mes_referencia, nome_cooperativa])
   @@index([ano_referencia, mes_referencia])
@@ -201,6 +255,8 @@ model estacoes_tratamento_esgoto {
   inicio_operacao_ano         Int?
   nivel_tratamento            String   @db.VarChar(30)
   vazao_media_m3_dia          Decimal? @db.Decimal(14, 3)
+  vazao_media_projeto_m3_dia  Decimal? @db.Decimal(14, 3)
+  vazao_real_operada_m3_dia   Decimal? @db.Decimal(14, 3)
   vazao_maxima_projeto_m3_dia Decimal? @db.Decimal(14, 3)
   populacao_atendida          Int      @default(0)
   populacao_urbana_referencia Int      @default(0)
@@ -242,6 +298,8 @@ model laudos_eficiencia_ete {
   ciclo_icms_id                           BigInt
   mes_referencia                          Int
   eficiencia_remocao_dbo_percentual       Decimal  @db.Decimal(5, 2)
+  dbo_afluente_mg_l                       Decimal? @db.Decimal(10, 2)
+  dbo_efluente_mg_l                       Decimal? @db.Decimal(10, 2)
   laboratorio                             String?  @db.VarChar(180)
   laboratorio_credenciado_inea            Boolean  @default(false)
   certificado_credenciamento_documento_id BigInt?
@@ -300,16 +358,21 @@ model bacias_mananciais {
   nome                        String   @db.VarChar(180)
   area_drenagem_total_km2     Decimal  @db.Decimal(14, 4)
   area_drenagem_municipal_km2 Decimal  @db.Decimal(14, 4)
+  area_total_bacia_ha         Decimal? @db.Decimal(14, 4)
+  area_protecao_municipal_ha  Decimal? @db.Decimal(14, 4)
+  populacao_dependente        Int?
   fonte_cartografica          String   @db.VarChar(180)
   abastece_fora_bacia         Boolean  @default(false)
   depende_transposicao        String?  @db.VarChar(30)
   mapa_documento_id           BigInt?
+  ato_legal_documento_id      BigInt?
   status_validacao            String   @default("Pendente") @db.VarChar(30)
   observacoes                 String?
   criado_em                   DateTime @default(now())
 
   ciclos_icms                   ciclos_icms?                    @relation(fields: [ciclo_icms_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
   mapa_documento                documentos_evidencias?          @relation("baciaMapaDocumento", fields: [mapa_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  ato_legal_documento           documentos_evidencias?          @relation("baciaAtoLegalDocumento", fields: [ato_legal_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
   pontos_captacao_abastecimento pontos_captacao_abastecimento[]
 
   @@index([ciclo_icms_id])
@@ -369,6 +432,10 @@ model fundo_municipal_meio_ambiente {
   id                                BigInt    @id @default(autoincrement())
   ciclo_icms_id                     BigInt    @unique
   possui_fundo                      Boolean   @default(false)
+  cnpj_fundo                        String?   @db.VarChar(18)
+  banco_nome                        String?   @db.VarChar(120)
+  agencia                           String?   @db.VarChar(20)
+  conta_bancaria                    String?   @db.VarChar(30)
   lei_criacao_numero                String?   @db.VarChar(80)
   lei_criacao_data                  DateTime? @db.Date
   lei_criacao_documento_id          BigInt?
@@ -378,14 +445,20 @@ model fundo_municipal_meio_ambiente {
   norma_repasse_data_publicacao     DateTime? @db.Date
   norma_repasse_documento_id        BigInt?
   percentual_repasse_previsto       Decimal?  @db.Decimal(6, 3)
+  receita_anual_arrecadada          Decimal?  @db.Decimal(14, 2)
+  despesa_anual_executada           Decimal?  @db.Decimal(14, 2)
+  balanco_anual_documento_id        BigInt?
+  execucao_financeira_documento_id  BigInt?
   status_iqsmma                     String    @default("Nao implementado") @db.VarChar(40)
   observacoes                       String?
   criado_em                         DateTime  @default(now())
 
-  ciclos_icms              ciclos_icms                @relation(fields: [ciclo_icms_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  lei_criacao_documento    documentos_evidencias?     @relation("leiCriacaoDocumento", fields: [lei_criacao_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  norma_repasse_documento  documentos_evidencias?     @relation("normaRepasseDocumento", fields: [norma_repasse_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  repasses_fundo_municipal repasses_fundo_municipal[]
+  ciclos_icms                   ciclos_icms                @relation(fields: [ciclo_icms_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  lei_criacao_documento         documentos_evidencias?     @relation("leiCriacaoDocumento", fields: [lei_criacao_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  norma_repasse_documento       documentos_evidencias?     @relation("normaRepasseDocumento", fields: [norma_repasse_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  balanco_anual_documento       documentos_evidencias?     @relation("balancoFundoDocumento", fields: [balanco_anual_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  execucao_financeira_documento documentos_evidencias?     @relation("execucaoFundoDocumento", fields: [execucao_financeira_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  repasses_fundo_municipal      repasses_fundo_municipal[]
 }
 
 model repasses_fundo_municipal {
