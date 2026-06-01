@@ -1,4 +1,6 @@
 import { prisma } from "../lib/prisma.js";
+import { badRequest, unprocessable } from "../lib/http.js";
+import { roundDecimal, safePercent, sumDecimals } from "../lib/math.js";
 
 type NivelTratamento = "Primario" | "Secundario" | "Terciario" | "Emissario Submarino";
 
@@ -12,7 +14,7 @@ const FATOR_TRATAMENTO: Record<NivelTratamento, number> = {
 function calcularFatorRE(nivelTratamento: NivelTratamento, mediaEficienciaDbo: number | null): number {
   if (nivelTratamento === "Emissario Submarino") return 10;
   if (mediaEficienciaDbo === null) {
-    throw new Error("Nao ha laudos validados de eficiencia de DBO para calcular o RE da ETE.");
+    throw unprocessable("Nao ha laudos validados de eficiencia de DBO para calcular o RE da ETE.");
   }
   if (mediaEficienciaDbo < 80) return 0;
   if (mediaEficienciaDbo <= 90) return 8;
@@ -37,22 +39,26 @@ export async function calcularITEPorEstacao(params: {
       },
     });
 
-    if (!ete) throw new Error("Estacao de Tratamento de Esgoto nao encontrada.");
+    if (!ete) throw unprocessable("Estacao de Tratamento de Esgoto nao encontrada.");
     if (!ete.populacao_urbana_referencia || ete.populacao_urbana_referencia <= 0) {
-      throw new Error("Populacao urbana de referencia invalida.");
+      throw badRequest("Populacao urbana de referencia invalida.");
     }
 
     const nivelTratamento = ete.nivel_tratamento as NivelTratamento;
     const fatorTratamento = FATOR_TRATAMENTO[nivelTratamento];
     if (fatorTratamento === undefined) {
-      throw new Error(`Nivel de tratamento invalido: ${ete.nivel_tratamento}`);
+      throw badRequest("Nivel de tratamento invalido.");
     }
 
-    const percentualPopulacaoAtendida =
-      (ete.populacao_atendida / ete.populacao_urbana_referencia) * 100;
+    const percentualPopulacaoAtendida = safePercent(
+      ete.populacao_atendida,
+      ete.populacao_urbana_referencia,
+      "Percentual de populacao atendida",
+      4,
+    );
 
     if (percentualPopulacaoAtendida < 0 || percentualPopulacaoAtendida > 100) {
-      throw new Error("Percentual de populacao atendida fora do intervalo esperado.");
+      throw badRequest("Percentual de populacao atendida fora do intervalo esperado.");
     }
 
     const mediaLaudos = await tx.laudos_eficiencia_ete.aggregate({
@@ -71,7 +77,7 @@ export async function calcularITEPorEstacao(params: {
         : Number(mediaLaudos._avg.eficiencia_remocao_dbo_percentual);
 
     const reRelatorioEficiencia = calcularFatorRE(nivelTratamento, mediaEficienciaDbo);
-    const pontuacaoParcial = fatorTratamento * percentualPopulacaoAtendida + reRelatorioEficiencia;
+    const pontuacaoParcial = roundDecimal(fatorTratamento * percentualPopulacaoAtendida + reRelatorioEficiencia, 6);
 
     const resultado = await tx.calculo_ite_anual.upsert({
       where: {
@@ -159,14 +165,14 @@ export async function calcularITEMunicipalConsolidado(cicloIcmsId: number) {
     }
   }
 
-  const pontuacaoBruta = resultados.reduce((total, item) => total + Number(item.pontuacaoParcial || 0), 0);
-  const somaPercentualAtendido = resultados.reduce(
-    (total, item) => total + Number(item.percentualPopulacaoAtendida || 0),
-    0,
+  const pontuacaoBruta = sumDecimals(resultados.map((item) => Number(item.pontuacaoParcial || 0)), 6);
+  const somaPercentualAtendido = sumDecimals(
+    resultados.map((item) => Number(item.percentualPopulacaoAtendida || 0)),
+    4,
   );
   const possuiPossivelSobreposicaoPopulacional = somaPercentualAtendido > 100;
   const pontuacaoFinalMunicipal = possuiPossivelSobreposicaoPopulacional
-    ? pontuacaoBruta * (100 / somaPercentualAtendido)
+    ? roundDecimal(pontuacaoBruta * (100 / somaPercentualAtendido), 6)
     : pontuacaoBruta;
 
   return {
@@ -207,8 +213,8 @@ export async function obterResultadoITEMunicipalConsolidado(cicloIcmsId: number)
     calculadoEm: calculo.calculado_em,
   }));
 
-  const pontuacaoBruta = estacoes.reduce((total, item) => total + item.pontuacaoParcial, 0);
-  const somaPercentualAtendido = estacoes.reduce((total, item) => total + item.percentualPopulacaoAtendida, 0);
+  const pontuacaoBruta = sumDecimals(estacoes.map((item) => item.pontuacaoParcial), 6);
+  const somaPercentualAtendido = sumDecimals(estacoes.map((item) => item.percentualPopulacaoAtendida), 4);
   const possuiPossivelSobreposicaoPopulacional = somaPercentualAtendido > 100;
 
   return {
@@ -216,7 +222,7 @@ export async function obterResultadoITEMunicipalConsolidado(cicloIcmsId: number)
     municipio: "Nova Iguacu",
     pontuacaoBruta,
     pontuacaoFinalMunicipal: possuiPossivelSobreposicaoPopulacional
-      ? pontuacaoBruta * (100 / somaPercentualAtendido)
+      ? roundDecimal(pontuacaoBruta * (100 / somaPercentualAtendido), 6)
       : pontuacaoBruta,
     somaPercentualAtendido,
     possuiPossivelSobreposicaoPopulacional,

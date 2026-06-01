@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
@@ -468,16 +468,28 @@ function CompletionDashboard() {
 
 function DigitalForm({ config }: { config: DigitalFormConfig }) {
   const [draft, setDraft] = useState<DraftRecord>(() => loadDraft(config.id));
+  const didMount = useRef(false);
   const status = getFormStatus(config, draft);
   const checklist = getChecklist(config, draft);
   const pending = checklist.filter((item) => !item.complete);
 
+  useEffect(() => {
+    if (!didMount.current) {
+      didMount.current = true;
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      localStorage.setItem(storageKey(config.id), JSON.stringify(draft));
+      window.dispatchEvent(new Event("draft-saved"));
+    }, 500);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [config.id, draft]);
+
   function updateField(field: FieldConfig, value: string | boolean) {
     setDraft((current) => {
-      const next = { ...current, [field.name]: value };
-      localStorage.setItem(storageKey(config.id), JSON.stringify(next));
-      window.dispatchEvent(new Event("draft-saved"));
-      return next;
+      return { ...current, [field.name]: value };
     });
   }
 

@@ -1,4 +1,6 @@
 import { prisma } from "../lib/prisma.js";
+import { badRequest } from "../lib/http.js";
+import { roundDecimal, safePercent, sumDecimals } from "../lib/math.js";
 
 export type TipoSistemaColeta = "Domiciliar" | "UTC_Ponto";
 
@@ -24,9 +26,9 @@ export async function calcularFRMunicipal(params: {
 }) {
   const { cicloIcmsId, totalRsuAnualT, tipoSistema } = params;
 
-  if (!Number.isInteger(cicloIcmsId)) throw new Error("cicloIcmsId invalido.");
+  if (!Number.isInteger(cicloIcmsId)) throw badRequest("cicloIcmsId invalido.");
   if (!Number.isFinite(totalRsuAnualT) || totalRsuAnualT <= 0) {
-    throw new Error("totalRsuAnualT deve ser maior que zero.");
+    throw badRequest("totalRsuAnualT deve ser maior que zero.");
   }
 
   const agregado = await prisma.coleta_seletiva.aggregate({
@@ -44,8 +46,13 @@ export async function calcularFRMunicipal(params: {
   const totalPlasticoT = Number(agregado._sum.peso_plastico_t ?? 0);
   const totalVidroT = Number(agregado._sum.peso_vidro_t ?? 0);
   const totalMetalT = Number(agregado._sum.peso_metal_t ?? 0);
-  const totalReciclaveisT = totalPapelT + totalPlasticoT + totalVidroT + totalMetalT;
-  const percentualReciclagem = (totalReciclaveisT / totalRsuAnualT) * 100;
+  const totalReciclaveisT = sumDecimals([totalPapelT, totalPlasticoT, totalVidroT, totalMetalT], 6);
+  const percentualReciclagem = safePercent(
+    totalReciclaveisT,
+    totalRsuAnualT,
+    "Percentual de reciclagem",
+    4,
+  );
   const fatorReciclagem = calcularFaixaFR(percentualReciclagem, tipoSistema);
 
   const resultado = await prisma.calculo_irs_anual.upsert({
@@ -82,7 +89,7 @@ export async function calcularFRMunicipal(params: {
     cicloIcmsId,
     municipio: "Nova Iguacu",
     tipoSistema,
-    totalRsuAnualT,
+    totalRsuAnualT: roundDecimal(totalRsuAnualT, 6),
     totaisPorMaterial: {
       papelT: totalPapelT,
       plasticoT: totalPlasticoT,

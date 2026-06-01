@@ -1,6 +1,13 @@
 import { Router } from "express";
 import multer from "multer";
+import { badRequest, sendError } from "../lib/http.js";
 import { prisma } from "../lib/prisma.js";
+import {
+  decimalNumber,
+  integerParam,
+  requiredText,
+  sanitizeFilename,
+} from "../lib/validation.js";
 import {
   calcularITEMunicipalConsolidado,
   calcularITEPorEstacao,
@@ -8,122 +15,111 @@ import {
 } from "../services/calculoIte.service.js";
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype !== "application/pdf") {
+      return cb(new Error("Apenas arquivos PDF sao aceitos para laudos tecnicos."));
+    }
+    return cb(null, true);
+  },
+});
 
 router.post("/api/icms/esgoto/calcular-estacao", async (req, res) => {
   try {
-    const cicloIcmsId = Number(req.body.cicloIcmsId);
-    const estacaoTratamentoEsgotoId = Number(req.body.estacaoTratamentoEsgotoId);
-
-    if (!Number.isInteger(cicloIcmsId) || !Number.isInteger(estacaoTratamentoEsgotoId)) {
-      return res.status(400).json({ erro: "Informe cicloIcmsId e estacaoTratamentoEsgotoId validos." });
-    }
+    const cicloIcmsId = integerParam(req.body.cicloIcmsId, "cicloIcmsId", { min: 1 });
+    const estacaoTratamentoEsgotoId = integerParam(req.body.estacaoTratamentoEsgotoId, "estacaoTratamentoEsgotoId", { min: 1 });
 
     const resultado = await calcularITEPorEstacao({ cicloIcmsId, estacaoTratamentoEsgotoId });
     return res.status(200).json({ mensagem: "Calculo da ETE realizado com sucesso.", resultado });
   } catch (error) {
-    return res.status(422).json({
-      erro: "Nao foi possivel calcular a ETE.",
-      detalhes: error instanceof Error ? error.message : "Erro desconhecido.",
-    });
+    return sendError(res, error, "Nao foi possivel calcular a ETE.", 422);
   }
 });
 
 router.post("/api/icms/esgoto/calcular-consolidado/:cicloId", async (req, res) => {
   try {
-    const cicloIcmsId = Number(req.params.cicloId);
-    if (!Number.isInteger(cicloIcmsId)) return res.status(400).json({ erro: "cicloId invalido." });
+    const cicloIcmsId = integerParam(req.params.cicloId, "cicloId", { min: 1 });
     const resultado = await calcularITEMunicipalConsolidado(cicloIcmsId);
     return res.status(200).json({ mensagem: "Calculo consolidado municipal realizado com sucesso.", resultado });
   } catch (error) {
-    return res.status(422).json({
-      erro: "Nao foi possivel calcular o consolidado municipal.",
-      detalhes: error instanceof Error ? error.message : "Erro desconhecido.",
-    });
+    return sendError(res, error, "Nao foi possivel calcular o consolidado municipal.", 422);
   }
 });
 
 router.get("/api/icms/esgoto/resultado-consolidado/:cicloId", async (req, res) => {
   try {
-    const cicloIcmsId = Number(req.params.cicloId);
-    if (!Number.isInteger(cicloIcmsId)) return res.status(400).json({ erro: "cicloId invalido." });
+    const cicloIcmsId = integerParam(req.params.cicloId, "cicloId", { min: 1 });
     const resultado = await obterResultadoITEMunicipalConsolidado(cicloIcmsId);
     return res.status(200).json({ resultado });
   } catch (error) {
-    return res.status(500).json({
-      erro: "Nao foi possivel carregar o resultado consolidado.",
-      detalhes: error instanceof Error ? error.message : "Erro desconhecido.",
-    });
+    return sendError(res, error, "Nao foi possivel carregar o resultado consolidado.");
   }
 });
 
-router.post("/api/icms/esgoto/laudos", upload.single("arquivoLaudo"), async (req, res) => {
-  try {
-    const cicloIcmsId = Number(req.body.cicloIcmsId);
-    const estacaoTratamentoEsgotoId = Number(req.body.estacaoTratamentoEsgotoId);
-    const mesReferencia = Number(req.body.mesReferencia);
-    const eficiencia = Number(req.body.eficienciaRemocaoDboPercentual);
-    const laboratorio = String(req.body.laboratorio ?? "").trim();
-    const laboratorioCredenciadoInea = String(req.body.laboratorioCredenciadoInea) === "true";
-
-    if (!Number.isInteger(cicloIcmsId) || !Number.isInteger(estacaoTratamentoEsgotoId)) {
-      return res.status(400).json({ erro: "cicloIcmsId ou estacaoTratamentoEsgotoId invalido." });
+router.post("/api/icms/esgoto/laudos", (req, res) => {
+  upload.single("arquivoLaudo")(req, res, async (uploadError) => {
+    if (uploadError) {
+      return sendError(res, badRequest(uploadError.message), "Nao foi possivel receber o arquivo do laudo.");
     }
-    if (!Number.isInteger(mesReferencia) || mesReferencia < 1 || mesReferencia > 12) {
-      return res.status(400).json({ erro: "Mes de referencia invalido." });
-    }
-    if (!Number.isFinite(eficiencia) || eficiencia < 0 || eficiencia > 100) {
-      return res.status(400).json({ erro: "Eficiencia de DBO deve estar entre 0 e 100." });
-    }
-    if (!req.file) return res.status(400).json({ erro: "Anexe o PDF do laudo tecnico." });
 
-    const documento = await prisma.documentos_evidencias.create({
-      data: {
-        ciclo_icms_id: BigInt(cicloIcmsId),
-        tipo_documento: "Laudo de Eficiencia DBO",
-        modulo_origem: "Esgotamento Sanitario",
-        caminho_arquivo: `uploads/laudos/${Date.now()}-${req.file.originalname}`,
-        status_validacao: "Pendente",
-      },
-    });
+    try {
+      const cicloIcmsId = integerParam(req.body.cicloIcmsId, "cicloIcmsId", { min: 1 });
+      const estacaoTratamentoEsgotoId = integerParam(req.body.estacaoTratamentoEsgotoId, "estacaoTratamentoEsgotoId", { min: 1 });
+      const mesReferencia = integerParam(req.body.mesReferencia, "mesReferencia", { min: 1, max: 12 });
+      const eficiencia = decimalNumber(req.body.eficienciaRemocaoDboPercentual, "eficienciaRemocaoDboPercentual", { min: 0, max: 100 });
+      const laboratorio = requiredText(req.body.laboratorio, "laboratorio", 180);
+      const laboratorioCredenciadoInea = String(req.body.laboratorioCredenciadoInea) === "true";
 
-    const laudo = await prisma.laudos_eficiencia_ete.upsert({
-      where: {
-        estacao_tratamento_esgoto_id_ciclo_icms_id_mes_referencia: {
+      if (!req.file) return res.status(400).json({ erro: "Anexe o PDF do laudo tecnico." });
+      const filename = sanitizeFilename(req.file.originalname);
+
+      const documento = await prisma.documentos_evidencias.create({
+        data: {
+          ciclo_icms_id: BigInt(cicloIcmsId),
+          tipo_documento: "Laudo de Eficiencia DBO",
+          modulo_origem: "Esgotamento Sanitario",
+          caminho_arquivo: `uploads/laudos/${Date.now()}-${filename}`,
+          status_validacao: "Pendente",
+        },
+      });
+
+      const laudo = await prisma.laudos_eficiencia_ete.upsert({
+        where: {
+          estacao_tratamento_esgoto_id_ciclo_icms_id_mes_referencia: {
+            estacao_tratamento_esgoto_id: BigInt(estacaoTratamentoEsgotoId),
+            ciclo_icms_id: BigInt(cicloIcmsId),
+            mes_referencia: mesReferencia,
+          },
+        },
+        create: {
           estacao_tratamento_esgoto_id: BigInt(estacaoTratamentoEsgotoId),
           ciclo_icms_id: BigInt(cicloIcmsId),
           mes_referencia: mesReferencia,
+          eficiencia_remocao_dbo_percentual: eficiencia,
+          laboratorio,
+          laboratorio_credenciado_inea: laboratorioCredenciadoInea,
+          laudo_documento_id: documento.id,
+          status_validacao: "Pendente",
         },
-      },
-      create: {
-        estacao_tratamento_esgoto_id: BigInt(estacaoTratamentoEsgotoId),
-        ciclo_icms_id: BigInt(cicloIcmsId),
-        mes_referencia: mesReferencia,
-        eficiencia_remocao_dbo_percentual: eficiencia,
-        laboratorio,
-        laboratorio_credenciado_inea: laboratorioCredenciadoInea,
-        laudo_documento_id: documento.id,
-        status_validacao: "Pendente",
-      },
-      update: {
-        eficiencia_remocao_dbo_percentual: eficiencia,
-        laboratorio,
-        laboratorio_credenciado_inea: laboratorioCredenciadoInea,
-        laudo_documento_id: documento.id,
-        status_validacao: "Pendente",
-      },
-    });
+        update: {
+          eficiencia_remocao_dbo_percentual: eficiencia,
+          laboratorio,
+          laboratorio_credenciado_inea: laboratorioCredenciadoInea,
+          laudo_documento_id: documento.id,
+          status_validacao: "Pendente",
+        },
+      });
 
-    return res.status(201).json({
-      mensagem: "Laudo mensal cadastrado com sucesso.",
-      resultado: { laudoId: Number(laudo.id), documentoId: Number(documento.id) },
-    });
-  } catch (error) {
-    return res.status(500).json({
-      erro: "Nao foi possivel salvar o laudo.",
-      detalhes: error instanceof Error ? error.message : "Erro desconhecido.",
-    });
-  }
+      return res.status(201).json({
+        mensagem: "Laudo mensal cadastrado com sucesso.",
+        resultado: { laudoId: Number(laudo.id), documentoId: Number(documento.id) },
+      });
+    } catch (error) {
+      return sendError(res, error, "Nao foi possivel salvar o laudo.");
+    }
+  });
 });
 
 export default router;
