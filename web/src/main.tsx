@@ -31,7 +31,26 @@ type EvidenceUploadResponse = {
     documentoId: number;
     caminhoArquivo: string;
     statusValidacao: string;
+    arquivoPersistido?: boolean;
   };
+};
+
+type ServerFormResponse = {
+  resultado: null | {
+    id: number;
+    formularioCodigo: string;
+    status: string;
+    respostaJson: DraftRecord;
+    atualizadoEm: string;
+  };
+};
+
+type CommentResponse = {
+  resultados: Array<{
+    id: number;
+    comentario: string;
+    criadoEm: string;
+  }>;
 };
 
 type ComplianceItem = {
@@ -979,6 +998,15 @@ function statusTone(status: FormStatus): "green" | "amber" | "red" | "blue" {
   }[status];
 }
 
+function apiStatus(status: FormStatus) {
+  return {
+    nao_iniciado: "Rascunho",
+    em_preenchimento: "Em preenchimento",
+    pendente_documento: "Pendente de documento",
+    completo: "Completo",
+  }[status];
+}
+
 function loadDraft(formId: string): DraftRecord {
   try {
     return JSON.parse(localStorage.getItem(storageKey(formId)) || "{}") as DraftRecord;
@@ -1019,6 +1047,42 @@ function loadStringList(key: string) {
   } catch {
     return [];
   }
+}
+
+async function loadServerDraft(formId: string) {
+  return api<ServerFormResponse>(`/api/icms/formularios/respostas/${formId}?cicloIcmsId=${cicloId}`);
+}
+
+async function saveServerDraft(config: DigitalFormConfig, draft: DraftRecord, status: FormStatus) {
+  const checklist = getChecklist(config, draft).map((item) => ({
+    item: item.label,
+    obrigatorio: true,
+    completo: item.complete,
+    documentoExigido: item.document,
+  }));
+
+  return api<{ mensagem: string }>("/api/icms/formularios/respostas/" + config.id, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      cicloIcmsId: cicloId,
+      status: apiStatus(status),
+      respostaJson: draft,
+      checklist,
+    }),
+  });
+}
+
+async function loadServerComments(formId: string) {
+  return api<CommentResponse>(`/api/icms/formularios/${formId}/comentarios?cicloIcmsId=${cicloId}`);
+}
+
+async function saveServerComment(formId: string, comentario: string) {
+  return api<{ resultado: { id: number; comentario: string; criadoEm: string } }>(`/api/icms/formularios/${formId}/comentarios`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cicloIcmsId: cicloId, comentario }),
+  });
 }
 
 function reportStorageKey(reportId: string) {
@@ -1236,11 +1300,47 @@ function DigitalForm({ config }: { config: DigitalFormConfig }) {
   const [uploadingField, setUploadingField] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState("");
   const [comment, setComment] = useState("");
+  const [serverComments, setServerComments] = useState<string[]>([]);
+  const [syncStatus, setSyncStatus] = useState<"local" | "syncing" | "synced" | "error">("local");
+  const [syncMessage, setSyncMessage] = useState("Rascunho local carregado.");
   const [auditTick, setAuditTick] = useState(0);
   const didMount = useRef(false);
   const status = getFormStatus(config, draft);
   const checklist = getChecklist(config, draft);
   const pending = checklist.filter((item) => !item.complete);
+
+  useEffect(() => {
+    let active = true;
+
+    async function hydrate() {
+      try {
+        const localDraft = loadDraft(config.id);
+        const [serverDraft, comments] = await Promise.all([
+          loadServerDraft(config.id),
+          loadServerComments(config.id),
+        ]);
+        if (!active) return;
+
+        const localHasValues = Object.values(localDraft).some(isFilled);
+        if (serverDraft.resultado?.respostaJson && !localHasValues) {
+          setDraft(serverDraft.resultado.respostaJson);
+          localStorage.setItem(storageKey(config.id), JSON.stringify(serverDraft.resultado.respostaJson));
+          setSyncStatus("synced");
+          setSyncMessage("Ultima versao carregada do banco.");
+        }
+        setServerComments(comments.resultados.map((item) => `${new Date(item.criadoEm).toLocaleString("pt-BR")} - ${item.comentario}`));
+      } catch {
+        if (!active) return;
+        setSyncStatus("local");
+        setSyncMessage("Trabalhando com rascunho local; sincronizacao sera tentada ao salvar.");
+      }
+    }
+
+    hydrate();
+    return () => {
+      active = false;
+    };
+  }, [config.id]);
 
   useEffect(() => {
     if (!didMount.current) {
@@ -1251,7 +1351,19 @@ function DigitalForm({ config }: { config: DigitalFormConfig }) {
     const timeoutId = window.setTimeout(() => {
       localStorage.setItem(storageKey(config.id), JSON.stringify(draft));
       window.dispatchEvent(new Event("draft-saved"));
-    }, 500);
+      setSyncStatus("syncing");
+      saveServerDraft(config, draft, getFormStatus(config, draft))
+        .then(() => {
+          appendAudit(config.id, "Rascunho sincronizado no banco");
+          setSyncStatus("synced");
+          setSyncMessage("Salvo no banco de dados.");
+          setAuditTick((value) => value + 1);
+        })
+        .catch(() => {
+          setSyncStatus("error");
+          setSyncMessage("Rascunho salvo localmente, mas ainda nao sincronizado no banco.");
+        });
+    }, 900);
 
     return () => window.clearTimeout(timeoutId);
   }, [config.id, draft]);
@@ -1262,18 +1374,36 @@ function DigitalForm({ config }: { config: DigitalFormConfig }) {
     });
   }
 
-  function saveDraft() {
+  async function saveDraft() {
     localStorage.setItem(storageKey(config.id), JSON.stringify(draft));
-    appendAudit(config.id, "Rascunho salvo manualmente");
-    setAuditTick((value) => value + 1);
     window.dispatchEvent(new Event("draft-saved"));
+    setSyncStatus("syncing");
+    try {
+      await saveServerDraft(config, draft, status);
+      appendAudit(config.id, "Rascunho salvo manualmente e sincronizado no banco");
+      setSyncStatus("synced");
+      setSyncMessage("Rascunho salvo no banco de dados.");
+    } catch {
+      appendAudit(config.id, "Rascunho salvo apenas localmente por falha de sincronizacao");
+      setSyncStatus("error");
+      setSyncMessage("Rascunho local salvo; tente novamente para sincronizar no banco.");
+    } finally {
+      setAuditTick((value) => value + 1);
+    }
   }
 
-  function addComment() {
+  async function addComment() {
     if (!comment.trim()) return;
     const current = loadStringList(commentsKey(config.id));
-    localStorage.setItem(commentsKey(config.id), JSON.stringify([`${new Date().toLocaleString("pt-BR")} - ${comment.trim()}`, ...current].slice(0, 8)));
-    appendAudit(config.id, "Comentario interno adicionado");
+    const commentText = comment.trim();
+    localStorage.setItem(commentsKey(config.id), JSON.stringify([`${new Date().toLocaleString("pt-BR")} - ${commentText}`, ...current].slice(0, 8)));
+    try {
+      const saved = await saveServerComment(config.id, commentText);
+      setServerComments((items) => [`${new Date(saved.resultado.criadoEm).toLocaleString("pt-BR")} - ${saved.resultado.comentario}`, ...items].slice(0, 8));
+      appendAudit(config.id, "Comentario interno sincronizado no banco");
+    } catch {
+      appendAudit(config.id, "Comentario interno salvo apenas localmente");
+    }
     setComment("");
     setAuditTick((value) => value + 1);
   }
@@ -1292,6 +1422,7 @@ function DigitalForm({ config }: { config: DigitalFormConfig }) {
         ...current,
         [field.name]: `${file.name} - Evidencia #${payload.resultado.documentoId}`,
         [`${field.name}DocumentoId`]: String(payload.resultado.documentoId),
+        [`${field.name}ArquivoPersistido`]: payload.resultado.arquivoPersistido ? "Sim" : "Nao",
       }));
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Falha ao enviar evidencia.");
@@ -1309,7 +1440,12 @@ function DigitalForm({ config }: { config: DigitalFormConfig }) {
           <h3>{config.title}</h3>
           <span>{config.description}</span>
         </div>
-        <Badge tone={statusTone(status)}>{statusLabel(status)}</Badge>
+        <div className="status-stack">
+          <Badge tone={statusTone(status)}>{statusLabel(status)}</Badge>
+          <Badge tone={syncStatus === "synced" ? "green" : syncStatus === "error" ? "red" : "amber"}>
+            {syncStatus === "syncing" ? "Sincronizando" : syncStatus === "synced" ? "Banco sincronizado" : syncStatus === "error" ? "Falha de sync" : "Local"}
+          </Badge>
+        </div>
       </div>
 
       <div className="form-grid">
@@ -1355,6 +1491,7 @@ function DigitalForm({ config }: { config: DigitalFormConfig }) {
         ))}
       </div>
 
+      <div className={`alert ${syncStatus === "error" ? "amber" : "green"}`}>{syncMessage}</div>
       {uploadError && <div className="alert amber">{uploadError}. O nome do arquivo foi salvo no rascunho, mas revise a conexao antes do envio oficial.</div>}
 
       <div className="checklist">
@@ -1377,6 +1514,7 @@ function DigitalForm({ config }: { config: DigitalFormConfig }) {
         <div>
           <h4>Historico recente</h4>
           {loadStringList(auditKey(config.id)).map((item) => <p key={item}>{item}</p>)}
+          {serverComments.map((item) => <p key={`server-${item}`}>Comentario no banco: {item}</p>)}
           {loadStringList(commentsKey(config.id)).map((item) => <p key={item}>Comentario: {item}</p>)}
           {auditTick < 0 && null}
         </div>

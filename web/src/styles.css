@@ -113,6 +113,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 32px 24px 48px; }
 .alert { border-radius: 10px; padding: 14px 16px; margin: 16px 0; font-weight: 700; }
 .alert.red { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
 .alert.amber { background: #fffbeb; color: #92400e; border: 1px solid #fcd34d; }
+.alert.green { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
 
 .table-wrap { overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 10px; margin-top: 18px; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -199,6 +200,13 @@ input, select { display: block; width: 100%; height: 42px; margin-top: 7px; bord
 }
 .digital-form-header h3 { margin: 0; color: #0f172a; font-size: 20px; letter-spacing: 0; }
 .digital-form-header span { display: block; margin-top: 6px; max-width: 760px; color: #64748b; line-height: 1.5; font-size: 14px; }
+.status-stack {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 180px;
+}
 
 .form-grid {
   display: grid;
