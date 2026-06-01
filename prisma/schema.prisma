@@ -1,0 +1,304 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model ciclos_icms {
+  id                BigInt   @id @default(autoincrement())
+  ano_referencia    Int      @unique
+  ano_envio         Int
+  data_limite_envio DateTime? @db.Date
+  status            String   @default("Em preparacao") @db.VarChar(30)
+  criado_em         DateTime @default(now())
+
+  atas_reunioes                 atas_reunioes[]
+  coleta_seletiva               coleta_seletiva[]
+  calculo_ite_anual             calculo_ite_anual[]
+  calculo_irs_anual             calculo_irs_anual?
+  laudos_eficiencia_ete         laudos_eficiencia_ete[]
+  documentos_evidencias         documentos_evidencias[]
+  fundo_municipal_meio_ambiente fundo_municipal_meio_ambiente?
+  alertas_pendencias            alertas_pendencias[]
+}
+
+model usuarios {
+  id           BigInt   @id @default(autoincrement())
+  nome         String   @db.VarChar(150)
+  cargo        String   @db.VarChar(120)
+  email        String   @unique @db.VarChar(180)
+  senha_hash   String
+  nivel_acesso String   @db.VarChar(30)
+  ativo        Boolean  @default(true)
+  criado_em    DateTime @default(now())
+
+  alertas_pendencias alertas_pendencias[]
+}
+
+model documentos_evidencias {
+  id                  BigInt   @id @default(autoincrement())
+  ciclo_icms_id       BigInt?
+  tipo_documento      String   @db.VarChar(80)
+  modulo_origem       String   @db.VarChar(80)
+  registro_origem_id  BigInt?
+  caminho_arquivo     String
+  data_documento      DateTime? @db.Date
+  status_validacao    String   @default("Pendente") @db.VarChar(30)
+  observacoes         String?
+  criado_em           DateTime @default(now())
+
+  ciclos_icms ciclos_icms? @relation(fields: [ciclo_icms_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  atas_documento atas_reunioes[] @relation("ataDocumento")
+  atas_lista_presenca atas_reunioes[] @relation("ataListaPresenca")
+  coleta_seletiva coleta_seletiva[]
+  licencas_ambientais_ete licencas_ambientais_ete[]
+  laudos_laudo laudos_eficiencia_ete[] @relation("laudoDocumento")
+  laudos_certificado laudos_eficiencia_ete[] @relation("certificadoDocumento")
+  fundo_lei fundo_municipal_meio_ambiente[] @relation("leiCriacaoDocumento")
+  fundo_norma fundo_municipal_meio_ambiente[] @relation("normaRepasseDocumento")
+  repasses_fundo_municipal repasses_fundo_municipal[]
+
+  @@index([ciclo_icms_id])
+  @@index([modulo_origem, registro_origem_id])
+}
+
+model unidades_conservacao {
+  id                     BigInt   @id @default(autoincrement())
+  nome                   String   @unique @db.VarChar(180)
+  categoria              String   @db.VarChar(10)
+  esfera                 String   @db.VarChar(20)
+  status_plano_manejo    String   @db.VarChar(30)
+  status_conselho_gestor String   @db.VarChar(30)
+  observacoes            String?
+  atualizado_em          DateTime @default(now())
+
+  atas_reunioes      atas_reunioes[]
+  alertas_pendencias alertas_pendencias[]
+}
+
+model atas_reunioes {
+  id                         BigInt   @id @default(autoincrement())
+  ciclo_icms_id              BigInt?
+  tipo_vinculo               String   @db.VarChar(20)
+  unidade_conservacao_id     BigInt?
+  orgao_colegiado            String   @db.VarChar(40)
+  data_reuniao               DateTime @db.Date
+  numero_ata                 String   @db.VarChar(50)
+  caminho_pdf                String
+  documento_evidencia_id     BigInt?
+  assunto_principal          String?  @db.VarChar(180)
+  aborda_saneamento          Boolean  @default(false)
+  aborda_pmsb                Boolean  @default(false)
+  aborda_uc                  Boolean  @default(false)
+  aborda_licenciamento       Boolean  @default(false)
+  lista_presenca_documento_id BigInt?
+  status_validacao           String   @default("Pendente") @db.VarChar(30)
+  validada_para_iqsmma       Boolean  @default(false)
+  observacoes                String?
+  criado_em                  DateTime @default(now())
+
+  ciclos_icms ciclos_icms? @relation(fields: [ciclo_icms_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  unidades_conservacao unidades_conservacao? @relation(fields: [unidade_conservacao_id], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  documento_evidencia documentos_evidencias? @relation("ataDocumento", fields: [documento_evidencia_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  lista_presenca_documento documentos_evidencias? @relation("ataListaPresenca", fields: [lista_presenca_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@unique([tipo_vinculo, unidade_conservacao_id, numero_ata, data_reuniao])
+  @@index([ciclo_icms_id])
+  @@index([unidade_conservacao_id])
+  @@index([data_reuniao])
+  @@index([orgao_colegiado, validada_para_iqsmma, status_validacao])
+}
+
+model coleta_seletiva {
+  id                        BigInt   @id @default(autoincrement())
+  ciclo_icms_id             BigInt?
+  ano_referencia            Int
+  mes_referencia            Int
+  nome_cooperativa          String   @db.VarChar(180)
+  peso_papel_t              Decimal  @default(0) @db.Decimal(12, 3)
+  peso_plastico_t           Decimal  @default(0) @db.Decimal(12, 3)
+  peso_vidro_t              Decimal  @default(0) @db.Decimal(12, 3)
+  peso_metal_t              Decimal  @default(0) @db.Decimal(12, 3)
+  caminho_mtr_ou_nota_fiscal String
+  documento_evidencia_id    BigInt?
+  status_dado               String   @default("Pendente") @db.VarChar(30)
+  observacoes               String?
+  criado_em                 DateTime @default(now())
+
+  ciclos_icms ciclos_icms? @relation(fields: [ciclo_icms_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  documentos_evidencias documentos_evidencias? @relation(fields: [documento_evidencia_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@unique([ano_referencia, mes_referencia, nome_cooperativa])
+  @@index([ano_referencia, mes_referencia])
+  @@index([status_dado])
+}
+
+model estacoes_tratamento_esgoto {
+  id                          BigInt   @id @default(autoincrement())
+  nome                        String   @unique @db.VarChar(180)
+  tipo                        String   @db.VarChar(30)
+  endereco                    String?
+  operador                    String?  @db.VarChar(150)
+  latitude                    Decimal? @db.Decimal(10, 7)
+  longitude                   Decimal? @db.Decimal(10, 7)
+  inicio_operacao_mes         Int?
+  inicio_operacao_ano         Int?
+  nivel_tratamento            String   @db.VarChar(30)
+  vazao_media_m3_dia          Decimal? @db.Decimal(14, 3)
+  vazao_maxima_projeto_m3_dia Decimal? @db.Decimal(14, 3)
+  populacao_atendida          Int      @default(0)
+  populacao_urbana_referencia Int      @default(0)
+  vinculada_procon_agua       Boolean  @default(false)
+  status_operacao             String   @default("Ativa") @db.VarChar(30)
+  observacoes                 String?
+  criado_em                   DateTime @default(now())
+
+  licencas_ambientais_ete licencas_ambientais_ete[]
+  laudos_eficiencia_ete   laudos_eficiencia_ete[]
+  calculo_ite_anual       calculo_ite_anual[]
+
+  @@index([nivel_tratamento])
+}
+
+model licencas_ambientais_ete {
+  id                            BigInt   @id @default(autoincrement())
+  estacao_tratamento_esgoto_id  BigInt
+  tipo_licenca                  String   @db.VarChar(60)
+  numero_licenca                String   @db.VarChar(80)
+  data_emissao                  DateTime? @db.Date
+  data_validade                 DateTime? @db.Date
+  status_licenca                String   @db.VarChar(30)
+  protocolo_renovacao           String?  @db.VarChar(100)
+  data_protocolo_renovacao      DateTime? @db.Date
+  documento_evidencia_id        BigInt?
+  observacoes                   String?
+  criado_em                     DateTime @default(now())
+
+  estacoes_tratamento_esgoto estacoes_tratamento_esgoto @relation(fields: [estacao_tratamento_esgoto_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  documentos_evidencias documentos_evidencias? @relation(fields: [documento_evidencia_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@unique([estacao_tratamento_esgoto_id, numero_licenca])
+}
+
+model laudos_eficiencia_ete {
+  id                                  BigInt   @id @default(autoincrement())
+  estacao_tratamento_esgoto_id        BigInt
+  ciclo_icms_id                       BigInt
+  mes_referencia                      Int
+  eficiencia_remocao_dbo_percentual   Decimal  @db.Decimal(5, 2)
+  laboratorio                         String?  @db.VarChar(180)
+  laboratorio_credenciado_inea        Boolean  @default(false)
+  certificado_credenciamento_documento_id BigInt?
+  laudo_documento_id                  BigInt?
+  status_validacao                    String   @default("Pendente") @db.VarChar(30)
+  observacoes                         String?
+  criado_em                           DateTime @default(now())
+
+  estacoes_tratamento_esgoto estacoes_tratamento_esgoto @relation(fields: [estacao_tratamento_esgoto_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  ciclos_icms ciclos_icms @relation(fields: [ciclo_icms_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  certificado_credenciamento_documento documentos_evidencias? @relation("certificadoDocumento", fields: [certificado_credenciamento_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  laudo_documento documentos_evidencias? @relation("laudoDocumento", fields: [laudo_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@unique([estacao_tratamento_esgoto_id, ciclo_icms_id, mes_referencia])
+  @@index([estacao_tratamento_esgoto_id, ciclo_icms_id])
+}
+
+model calculo_ite_anual {
+  id                            BigInt   @id @default(autoincrement())
+  ciclo_icms_id                 BigInt
+  estacao_tratamento_esgoto_id  BigInt
+  percentual_populacao_atendida Decimal  @default(0) @db.Decimal(8, 4)
+  fator_tratamento              Decimal  @default(0) @db.Decimal(8, 4)
+  re_relatorio_eficiencia       Decimal  @default(0) @db.Decimal(8, 4)
+  pontuacao_parcial             Decimal  @default(0) @db.Decimal(14, 6)
+  status_calculo                String   @default("Pendente") @db.VarChar(30)
+  calculado_em                  DateTime @default(now())
+
+  ciclos_icms ciclos_icms @relation(fields: [ciclo_icms_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  estacoes_tratamento_esgoto estacoes_tratamento_esgoto @relation(fields: [estacao_tratamento_esgoto_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([ciclo_icms_id, estacao_tratamento_esgoto_id])
+}
+
+model calculo_irs_anual {
+  id                    BigInt   @id @default(autoincrement())
+  ciclo_icms_id         BigInt   @unique
+  total_rsu_anual_t     Decimal  @db.Decimal(14, 3)
+  tipo_sistema          String   @db.VarChar(20)
+  total_papel_t         Decimal  @default(0) @db.Decimal(14, 3)
+  total_plastico_t      Decimal  @default(0) @db.Decimal(14, 3)
+  total_vidro_t         Decimal  @default(0) @db.Decimal(14, 3)
+  total_metal_t         Decimal  @default(0) @db.Decimal(14, 3)
+  total_reciclaveis_t   Decimal  @default(0) @db.Decimal(14, 3)
+  percentual_reciclagem Decimal  @default(0) @db.Decimal(8, 4)
+  fator_reciclagem      Int      @default(0)
+  status_calculo        String   @default("Pendente") @db.VarChar(30)
+  calculado_em          DateTime @default(now())
+
+  ciclos_icms ciclos_icms @relation(fields: [ciclo_icms_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+}
+
+model fundo_municipal_meio_ambiente {
+  id                                BigInt   @id @default(autoincrement())
+  ciclo_icms_id                     BigInt   @unique
+  possui_fundo                      Boolean  @default(false)
+  lei_criacao_numero                String?  @db.VarChar(80)
+  lei_criacao_data                  DateTime? @db.Date
+  lei_criacao_documento_id          BigInt?
+  possui_lei_repasse_icms_ecologico Boolean  @default(false)
+  norma_repasse_tipo                String?  @db.VarChar(30)
+  norma_repasse_numero              String?  @db.VarChar(80)
+  norma_repasse_data_publicacao     DateTime? @db.Date
+  norma_repasse_documento_id        BigInt?
+  percentual_repasse_previsto       Decimal? @db.Decimal(6, 3)
+  status_iqsmma                     String   @default("Nao implementado") @db.VarChar(40)
+  observacoes                       String?
+  criado_em                         DateTime @default(now())
+
+  ciclos_icms ciclos_icms @relation(fields: [ciclo_icms_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  lei_criacao_documento documentos_evidencias? @relation("leiCriacaoDocumento", fields: [lei_criacao_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  norma_repasse_documento documentos_evidencias? @relation("normaRepasseDocumento", fields: [norma_repasse_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  repasses_fundo_municipal repasses_fundo_municipal[]
+}
+
+model repasses_fundo_municipal {
+  id                    BigInt   @id @default(autoincrement())
+  fundo_municipal_id    BigInt
+  mes_referencia        Int
+  valor_repassado       Decimal  @default(0) @db.Decimal(14, 2)
+  percentual_repassado  Decimal? @db.Decimal(6, 3)
+  extrato_documento_id  BigInt?
+  status_validacao      String   @default("Pendente") @db.VarChar(30)
+  observacoes           String?
+  criado_em             DateTime @default(now())
+
+  fundo_municipal_meio_ambiente fundo_municipal_meio_ambiente @relation(fields: [fundo_municipal_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  documentos_evidencias documentos_evidencias? @relation(fields: [extrato_documento_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@unique([fundo_municipal_id, mes_referencia])
+}
+
+model alertas_pendencias {
+  id                       BigInt   @id @default(autoincrement())
+  ciclo_icms_id            BigInt?
+  titulo                   String   @db.VarChar(180)
+  descricao                String
+  nivel_impacto_ifca       String   @db.VarChar(10)
+  data_vencimento          DateTime @db.Date
+  status                   String   @default("Pendente") @db.VarChar(20)
+  responsavel_usuario_id   BigInt?
+  unidade_conservacao_id   BigInt?
+  criado_em                DateTime @default(now())
+  concluido_em             DateTime?
+
+  ciclos_icms ciclos_icms? @relation(fields: [ciclo_icms_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  usuarios usuarios? @relation(fields: [responsavel_usuario_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  unidades_conservacao unidades_conservacao? @relation(fields: [unidade_conservacao_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([data_vencimento])
+  @@index([status, nivel_impacto_ifca])
+}

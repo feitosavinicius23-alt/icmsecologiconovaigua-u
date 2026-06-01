@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: icms_nova_iguacu_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: icms_user
+      POSTGRES_PASSWORD: icms_password
+      POSTGRES_DB: icms_ecologico_nova_iguacu
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U icms_user -d icms_ecologico_nova_iguacu"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: icms_nova_iguacu_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://icms_user:icms_password@postgres:5432/icms_ecologico_nova_iguacu?schema=public
+      INSTALL_DEPS_ON_START: "false"
+      RUN_MIGRATIONS: "true"
+      PRISMA_MIGRATION_MODE: deploy
+      RUN_SEEDS: "true"
+      SEED_SQL_PATH: seeds/nova-iguacu.seed.sql
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres_data:
