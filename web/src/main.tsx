@@ -35,6 +35,16 @@ type SavedFormEntry = {
   updatedAt: string;
 };
 
+type ModuleIssue = {
+  formId: string;
+  formTitle: string;
+  module: string;
+  recordLabel: string;
+  severity: "critica" | "alta" | "media" | "baixa";
+  message: string;
+  action: string;
+};
+
 type PersistedFormPayload = {
   draft?: DraftRecord;
   records?: SavedFormEntry[];
@@ -998,6 +1008,142 @@ function getFormStatus(config: DigitalFormConfig, draft: DraftRecord): FormStatu
   return "em_preenchimento";
 }
 
+function numericValue(value: string | boolean | undefined) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function buildRuleIssues(config: DigitalFormConfig, draft: DraftRecord, recordLabel = "Rascunho atual"): ModuleIssue[] {
+  const issues: ModuleIssue[] = [];
+  const push = (severity: ModuleIssue["severity"], message: string, action: string) => {
+    issues.push({ formId: config.id, formTitle: config.title, module: config.module, recordLabel, severity, message, action });
+  };
+
+  for (const field of config.fields) {
+    if (field.kind === "number") {
+      const value = numericValue(draft[field.name]);
+      if (isFilled(draft[field.name]) && (value === null || value < 0)) {
+        push("alta", `${field.label} esta invalido ou negativo.`, "Corrija o valor numerico antes de validar o modulo.");
+      }
+    }
+  }
+
+  if (config.id === "esgoto_ete_laudos") {
+    const popAtendida = numericValue(draft.populacaoAtendida);
+    const popUrbana = numericValue(draft.populacaoUrbanaReferencia);
+    const dboAfluente = numericValue(draft.dboAfluente);
+    const dboEfluente = numericValue(draft.dboEfluente);
+    if (popAtendida !== null && popUrbana !== null && popAtendida > popUrbana) {
+      push("critica", "Populacao atendida maior que a populacao urbana de referencia.", "Revise os dados da concessionaria para evitar sobreposicao populacional no IES.");
+    }
+    if (dboAfluente !== null && dboEfluente !== null && dboAfluente <= dboEfluente) {
+      push("alta", "DBO efluente igual ou superior a DBO afluente.", "Revise o laudo, pois a eficiencia de remocao pode ficar zerada.");
+    }
+    if (!isFilled(draft.laudoDbo)) push("critica", "Laudo de eficiencia de DBO nao anexado.", "Anexe os laudos laboratoriais de autocontrole.");
+    if (!isFilled(draft.certificadoLaboratorio)) push("alta", "Certificado do laboratorio credenciado nao anexado.", "Anexe o certificado de credenciamento do laboratorio junto ao INEA.");
+  }
+
+  if (config.id === "residuos_destinacao_final") {
+    const meses = numericValue(draft.numeroMesesDestinacao);
+    if (meses !== null && meses < 12) push("alta", "Destinacao final comprovada por menos de 12 meses.", "Inclua comprovantes mensais ou justifique a lacuna documental.");
+    if (draft.possuiLixaoAtivo === "Sim") push("critica", "Foi informado lixao/vazadouro ativo no municipio.", "Regularize a informacao e anexe declaracao tecnica de inexistencia ou plano de remediacao.");
+    if (!isFilled(draft.cdfMtrConsolidado)) push("critica", "CDF ou MTR consolidado nao anexado.", "Anexe o documento consolidado de destinacao final.");
+  }
+
+  if (config.id === "residuos_coleta_seletiva") {
+    const total = ["papelT", "plasticoT", "vidroT", "metalT"].reduce((sum, field) => sum + (numericValue(draft[field]) ?? 0), 0);
+    if (total <= 0 && Object.values(draft).some(isFilled)) push("media", "Pesagem de reciclaveis zerada.", "Informe tonelagens de papel, plastico, vidro ou metal para pontuar no FR.");
+    if (!isFilled(draft.notaFiscalMtr)) push("alta", "Nota fiscal ou MTR da coleta seletiva nao anexado.", "Anexe comprovante de comercializacao/destinacao dos reciclaveis.");
+  }
+
+  if (config.id === "iqsmma_condema_fundo") {
+    const atas = numericValue(draft.atasCondema);
+    if (atas !== null && atas < 3) push("critica", "CONDEMA com menos de 3 atas ordinarias no ciclo.", "Cadastre e anexe pelo menos 3 atas validadas com listas de presenca.");
+    const extratos = ["extratoJaneiro", "extratoFevereiro", "extratoMarco", "extratoAbril", "extratoMaio", "extratoJunho", "extratoJulho", "extratoAgosto", "extratoSetembro", "extratoOutubro", "extratoNovembro", "extratoDezembro"];
+    const faltantes = extratos.filter((field) => !isFilled(draft[field]));
+    if (faltantes.length) push("critica", `Faltam ${faltantes.length} extrato(s) bancario(s) mensal(is) do Fundo.`, "Anexe a serie completa de janeiro a dezembro.");
+  }
+
+  if (config.id === "uc_gestao" || config.id === "uc_municipais") {
+    if (!isFilled(draft.atoCriacaoUc)) push("alta", "Ato legal de criacao da UC nao anexado.", "Anexe decreto/lei e memorial descritivo da unidade.");
+    if (!isFilled(draft.planoManejoUpload)) push("alta", "Plano de Manejo oficial nao anexado.", "Anexe o plano publicado ou registre justificativa tecnica.");
+    if (!isFilled(draft.atasConselhoUc)) push("media", "Atas do Conselho Gestor da UC nao anexadas.", "Inclua atas do ano-base para comprovar atividade de gestao.");
+  }
+
+  if (config.id === "mananciais_abastecimento" && !isFilled(draft.mapaDrenagem)) {
+    push("alta", "Mapa cartografico da area de drenagem nao anexado.", "Anexe mapa georreferenciado da bacia/manancial.");
+  }
+
+  return issues;
+}
+
+function collectAllIssues() {
+  const issues: ModuleIssue[] = [];
+  for (const form of digitalForms) {
+    const draft = loadDraft(form.id);
+    const records = loadRecords(form.id);
+    const entries = records.length ? records : [{ label: "Rascunho atual", draft, status: getFormStatus(form, draft) }];
+
+    for (const entry of entries) {
+      const checklist = getChecklist(form, entry.draft);
+      for (const item of checklist.filter((candidate) => !candidate.complete)) {
+        issues.push({
+          formId: form.id,
+          formTitle: form.title,
+          module: form.module,
+          recordLabel: entry.label,
+          severity: item.document ? "alta" : "media",
+          message: `${item.label} pendente.`,
+          action: item.document ? "Anexe o documento comprobatorio exigido." : "Preencha o campo obrigatorio.",
+        });
+      }
+      issues.push(...buildRuleIssues(form, entry.draft, entry.label));
+    }
+  }
+  return issues;
+}
+
+function downloadText(filename: string, content: string, type = "text/plain;charset=utf-8") {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportDossier() {
+  const generatedAt = new Date().toLocaleString("pt-BR");
+  const issues = collectAllIssues();
+  const sections = digitalForms.map((form) => {
+    const records = loadRecords(form.id);
+    const draft = loadDraft(form.id);
+    const entries = records.length ? records : [{ id: `${form.id}-draft`, label: "Rascunho atual", status: getFormStatus(form, draft), draft, createdAt: "", updatedAt: "" }];
+    return [
+      `## ${form.title}`,
+      `Modulo: ${form.module}`,
+      ...entries.map((entry) => [
+        `- Registro: ${entry.label}`,
+        `  Status: ${statusLabel(entry.status)}`,
+        `  Atualizado: ${entry.updatedAt ? new Date(entry.updatedAt).toLocaleString("pt-BR") : "rascunho"}`,
+        ...form.fields.map((field) => `  ${field.label}: ${String(entry.draft[field.name] ?? "")}`),
+      ].join("\n")),
+    ].join("\n");
+  });
+
+  downloadText(
+    `dossie-icms-nova-iguacu-${new Date().toISOString().slice(0, 10)}.md`,
+    [`# Dossie ICMS Ecologico - Nova Iguacu`, `Gerado em ${generatedAt}`, "", `Pendencias identificadas: ${issues.length}`, "", ...sections].join("\n\n"),
+    "text/markdown;charset=utf-8",
+  );
+}
+
+function parseCsv(text: string) {
+  const rows = text.split(/\r?\n/).filter(Boolean);
+  return rows.map((row) => row.split(/;|,/).map((cell) => cell.trim().replace(/^"|"$/g, "")));
+}
+
 function statusLabel(status: FormStatus) {
   return {
     nao_iniciado: "Nao iniciado",
@@ -1367,6 +1513,61 @@ function ScoreSimulatorPanel() {
   );
 }
 
+function PendingCenterPanel() {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const onStorage = () => setTick((value) => value + 1);
+    window.addEventListener("draft-saved", onStorage);
+    return () => window.removeEventListener("draft-saved", onStorage);
+  }, []);
+
+  const issues = useMemo(() => collectAllIssues(), [tick]);
+  const ordered = [...issues].sort((a, b) => {
+    const weight = { critica: 4, alta: 3, media: 2, baixa: 1 };
+    return weight[b.severity] - weight[a.severity];
+  });
+  const critical = issues.filter((issue) => issue.severity === "critica").length;
+  const high = issues.filter((issue) => issue.severity === "alta").length;
+
+  return (
+    <section className="panel">
+      <div className="section-header">
+        <div>
+          <h2>Pendencias Para Envio</h2>
+          <p>Conferencia operacional dos campos, documentos e regras de corte antes de montar o dossie final.</p>
+        </div>
+        <button type="button" onClick={exportDossier}>Gerar dossie de conferencia</button>
+      </div>
+      <div className="grid three">
+        <MetricCard title="Pendencias totais" value={String(issues.length)} helper="Itens que exigem acao antes do envio." tone={issues.length ? "amber" : "green"} />
+        <MetricCard title="Criticas" value={String(critical)} helper="Podem impedir ou fragilizar pontuacao." tone={critical ? "red" : "green"} />
+        <MetricCard title="Alta prioridade" value={String(high)} helper="Documentos e inconsistencias relevantes." tone={high ? "amber" : "green"} />
+      </div>
+      <div className="wizard-steps">
+        {["Dados do ciclo", "Esgoto", "Residuos", "UCs e Mananciais", "IQSMMA", "Dossie final"].map((step, index) => (
+          <div key={step}>
+            <span>{index + 1}</span>
+            <strong>{step}</strong>
+          </div>
+        ))}
+      </div>
+      <div className="alerts-list">
+        {ordered.map((issue, index) => (
+          <article key={`${issue.formId}-${issue.recordLabel}-${issue.message}-${index}`} className={`risk ${issue.severity === "critica" || issue.severity === "alta" ? "alto" : issue.severity === "media" ? "medio" : "baixo"}`}>
+            <Badge tone={issue.severity === "critica" || issue.severity === "alta" ? "red" : issue.severity === "media" ? "amber" : "blue"}>
+              {issue.severity.toUpperCase()}
+            </Badge>
+            <h3>{issue.formTitle} - {issue.recordLabel}</h3>
+            <p>{issue.message}</p>
+            <p><strong>Acao sugerida:</strong> {issue.action}</p>
+          </article>
+        ))}
+        {ordered.length === 0 && <div className="empty">Nenhuma pendencia encontrada. O dossie esta pronto para revisao final.</div>}
+      </div>
+    </section>
+  );
+}
+
 function DigitalForm({ config }: { config: DigitalFormConfig }) {
   const [draft, setDraft] = useState<DraftRecord>(() => loadDraft(config.id));
   const [records, setRecords] = useState<SavedFormEntry[]>(() => loadRecords(config.id));
@@ -1583,6 +1784,32 @@ function DigitalForm({ config }: { config: DigitalFormConfig }) {
     }
   }
 
+  async function handleCsvImport(file?: File) {
+    if (!file) return;
+    const text = await file.text();
+    const [header = [], ...rows] = parseCsv(text);
+    const normalizedHeader = header.map((item) => item.toLowerCase());
+    const now = new Date().toISOString();
+    const imported = rows.map((row, index) => {
+      const importedDraft: DraftRecord = {};
+      for (const field of config.fields) {
+        const labelIndex = normalizedHeader.findIndex((label) => label === field.label.toLowerCase() || label === field.name.toLowerCase());
+        if (labelIndex >= 0) importedDraft[field.name] = row[labelIndex] ?? "";
+      }
+      return {
+        id: `${config.id}-csv-${Date.now()}-${index}`,
+        label: getEntryLabel(config, importedDraft, index),
+        status: getFormStatus(config, importedDraft),
+        draft: importedDraft,
+        createdAt: now,
+        updatedAt: now,
+      };
+    });
+
+    const nextRecords = [...imported, ...records];
+    await persistRecord(nextRecords, draft, `${imported.length} registro(s) importado(s) por CSV`);
+  }
+
   return (
     <article className="digital-form">
       <div className="digital-form-header">
@@ -1607,6 +1834,12 @@ function DigitalForm({ config }: { config: DigitalFormConfig }) {
         <div className="record-actions">
           <button type="button" onClick={newRecord}>Novo registro</button>
           <button type="button" onClick={saveCurrentRecord}>{activeRecordId ? "Salvar registro" : "Adicionar registro"}</button>
+          {config.spreadsheet && (
+            <label className="import-button">
+              Importar CSV
+              <input type="file" accept=".csv,text/csv" onChange={(event) => handleCsvImport(event.target.files?.[0])} />
+            </label>
+          )}
         </div>
         {records.length > 0 && (
           <div className="record-list">
@@ -1623,6 +1856,28 @@ function DigitalForm({ config }: { config: DigitalFormConfig }) {
             ))}
           </div>
         )}
+      </section>
+
+      <section className="workflow-box">
+        <label>
+          Responsavel pelo preenchimento
+          <input value={String(draft.__responsavelModulo ?? "")} onChange={(event) => setDraft((current) => ({ ...current, __responsavelModulo: event.target.value }))} placeholder="Nome do tecnico responsavel" />
+        </label>
+        <label>
+          Prazo interno
+          <input type="date" value={String(draft.__prazoModulo ?? "")} onChange={(event) => setDraft((current) => ({ ...current, __prazoModulo: event.target.value }))} />
+        </label>
+        <label>
+          Status de aprovacao
+          <select value={String(draft.__statusAprovacao ?? "Rascunho")} onChange={(event) => setDraft((current) => ({ ...current, __statusAprovacao: event.target.value }))}>
+            <option>Rascunho</option>
+            <option>Aguardando documento</option>
+            <option>Aguardando validacao tecnica</option>
+            <option>Validado pela SEMAM</option>
+            <option>Aprovado para dossie</option>
+            <option>Bloqueado por inconsistencia</option>
+          </select>
+        </label>
       </section>
 
       <div className="form-grid">
@@ -1670,6 +1925,18 @@ function DigitalForm({ config }: { config: DigitalFormConfig }) {
 
       <div className={`alert ${syncStatus === "error" ? "amber" : "green"}`}>{syncMessage}</div>
       {uploadError && <div className="alert amber">{uploadError}. O nome do arquivo foi salvo no rascunho, mas revise a conexao antes do envio oficial.</div>}
+
+      {buildRuleIssues(config, draft).length > 0 && (
+        <div className="validation-box">
+          <h4>Validacoes automaticas da Nota Tecnica</h4>
+          {buildRuleIssues(config, draft).map((issue, index) => (
+            <div key={`${issue.message}-${index}`} className={`issue ${issue.severity}`}>
+              <strong>{issue.message}</strong>
+              <span>{issue.action}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="checklist">
         <h4>Checklist automatico de pendencias</h4>
@@ -2332,7 +2599,7 @@ function ConsolidadorPanel() {
           <h2>Consolidador IFCA</h2>
           <p>Relatorio executivo para fechamento do ciclo e preparacao do envio oficial.</p>
         </div>
-        <button onClick={() => window.print()}>Exportar relatorio</button>
+        <button onClick={exportDossier}>Exportar dossie</button>
       </div>
       <div className="ifca-card">
         <span>Municipio</span>
@@ -2370,6 +2637,7 @@ function App() {
   const [profile, setProfile] = useState<UserProfile>(() => loadProfile());
   const [cycleYear, setCycleYear] = useState(String(new Date().getFullYear()));
   const tabs = [
+    ["pendencias", "Pendencias"],
     ["conformidade", "Central de Conformidade"],
     ["modelos", "Modelos de Relatorios"],
     ["residuos", "Residuos"],
@@ -2393,7 +2661,7 @@ function App() {
             <input value={cycleYear} onChange={(event) => setCycleYear(event.target.value)} />
           </label>
           <button type="button" onClick={() => setTab("ifca")}>Simular Pontuacao</button>
-          <button type="button" onClick={() => window.print()}>Gerar Dossie Final</button>
+          <button type="button" onClick={exportDossier}>Gerar Dossie Final</button>
           <a href="/api/health" target="_blank" rel="noreferrer">API online</a>
         </div>
       </header>
@@ -2402,6 +2670,7 @@ function App() {
       <nav className="tabs">
         {tabs.map(([id, label]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>{label}</button>)}
       </nav>
+      {tab === "pendencias" && <PendingCenterPanel />}
       {tab === "conformidade" && <CompliancePanel />}
       {tab === "modelos" && <ReportModelsPanel />}
       {tab === "esgoto" && <EsgotoPanel />}
