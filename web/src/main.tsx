@@ -26,6 +26,14 @@ type DigitalFormConfig = {
 
 type DraftRecord = Record<string, string | boolean>;
 
+type EvidenceUploadResponse = {
+  resultado: {
+    documentoId: number;
+    caminhoArquivo: string;
+    statusValidacao: string;
+  };
+};
+
 type ComplianceItem = {
   id: string;
   title: string;
@@ -112,6 +120,7 @@ const digitalForms: DigitalFormConfig[] = [
       { name: "documentoLicenca", label: "Upload da licenca ambiental", kind: "file", required: true },
       { name: "documentoContrato", label: "Upload do contrato/declaracao do operador", kind: "file", required: true },
       { name: "documentoPesagem", label: "Upload de relatorio de pesagens/MTR", kind: "file", required: true },
+      { name: "comprovanteRecebimentoAterro", label: "Upload comprovante de recebimento do rejeito pelo aterro licenciado", kind: "file", required: true },
     ],
   },
   {
@@ -173,6 +182,7 @@ const digitalForms: DigitalFormConfig[] = [
     spreadsheet: true,
     fields: [
       { name: "nomeEte", label: "Nome da ETE/ETR", kind: "text", required: true },
+      { name: "tipoUnidade", label: "Tipo da unidade", kind: "select", required: true, options: ["ETE", "ETR", "Elevatoria", "Emissario Submarino", "Outro"] },
       { name: "nivelTratamento", label: "Nivel de tratamento", kind: "select", required: true, options: ["Primario", "Secundario", "Terciario", "Emissario Submarino"] },
       { name: "populacaoAtendida", label: "Populacao atendida", kind: "number", required: true },
       { name: "vazaoMedia", label: "Vazao media anual (m3/dia)", kind: "number", required: true },
@@ -233,6 +243,7 @@ const digitalForms: DigitalFormConfig[] = [
       { name: "planoManejo", label: "Status do Plano de Manejo", kind: "select", required: true, options: ["Atualizado", "Vencido", "Inexistente", "Em revisao"] },
       { name: "conselhoGestor", label: "Status do Conselho Gestor", kind: "select", required: true, options: ["Ativo", "Inativo", "Inexistente", "Pendente"] },
       { name: "infraestrutura", label: "Infraestrutura e equipamentos comprovados", kind: "textarea", required: false },
+      { name: "atoCriacaoUc", label: "Upload do Ato de Criacao/Decreto da UC", kind: "file", required: true },
       { name: "limiteVetor", label: "Upload limite vetorial/mapa da UC", kind: "file", required: true },
       { name: "planoManejoUpload", label: "Upload do Plano de Manejo", kind: "file", required: true },
       { name: "atasConselhoUc", label: "Upload atas do Conselho Gestor", kind: "file", required: true },
@@ -283,12 +294,27 @@ const digitalForms: DigitalFormConfig[] = [
     spreadsheet: false,
     fields: [
       { name: "atasCondema", label: "Quantidade de atas CONDEMA validadas", kind: "number", required: true },
+      { name: "dataReuniaoCondema", label: "Data da reuniao CONDEMA mais recente", kind: "date", required: true },
+      { name: "assuntoReuniaoCondema", label: "Assunto/pauta principal da reuniao", kind: "text", required: true },
       { name: "leiFundo", label: "Numero da lei de criacao do Fundo", kind: "text", required: true },
       { name: "normaRepasse", label: "Norma de repasse do ICMS Ecologico", kind: "text", required: true },
       { name: "percentualRepasse", label: "Percentual previsto de repasse (%)", kind: "number", required: true },
       { name: "atasUpload", label: "Upload das atas do CONDEMA", kind: "file", required: true },
-      { name: "leiFundoUpload", label: "Upload da lei/norma do Fundo", kind: "file", required: true },
-      { name: "extratosUpload", label: "Upload dos 12 extratos mensais", kind: "file", required: true },
+      { name: "listasPresencaCondema", label: "Upload das listas de presenca assinadas do CONDEMA", kind: "file", required: true },
+      { name: "leiFundoUpload", label: "Upload da Lei de Criacao do Fundo", kind: "file", required: true },
+      { name: "normaRepasseUpload", label: "Upload da Norma de Repasse do ICMS Ecologico", kind: "file", required: true },
+      { name: "extratoJaneiro", label: "Upload extrato bancario Janeiro", kind: "file", required: true },
+      { name: "extratoFevereiro", label: "Upload extrato bancario Fevereiro", kind: "file", required: true },
+      { name: "extratoMarco", label: "Upload extrato bancario Marco", kind: "file", required: true },
+      { name: "extratoAbril", label: "Upload extrato bancario Abril", kind: "file", required: true },
+      { name: "extratoMaio", label: "Upload extrato bancario Maio", kind: "file", required: true },
+      { name: "extratoJunho", label: "Upload extrato bancario Junho", kind: "file", required: true },
+      { name: "extratoJulho", label: "Upload extrato bancario Julho", kind: "file", required: true },
+      { name: "extratoAgosto", label: "Upload extrato bancario Agosto", kind: "file", required: true },
+      { name: "extratoSetembro", label: "Upload extrato bancario Setembro", kind: "file", required: true },
+      { name: "extratoOutubro", label: "Upload extrato bancario Outubro", kind: "file", required: true },
+      { name: "extratoNovembro", label: "Upload extrato bancario Novembro", kind: "file", required: true },
+      { name: "extratoDezembro", label: "Upload extrato bancario Dezembro", kind: "file", required: true },
     ],
   },
   {
@@ -358,7 +384,7 @@ const complianceSections: ComplianceSection[] = [
         title: "Comprovacao de operacao de ETEs no territorio com licenca ambiental valida.",
         penalty: "Sem ETE licenciada e comprovada, a pontuacao de tratamento de esgoto fica vulneravel a glosa tecnica no IES.",
         formIds: ["esgoto_ete_laudos"],
-        requiredFields: [{ formId: "esgoto_ete_laudos", fields: ["nomeEte", "licencaEte"] }],
+        requiredFields: [{ formId: "esgoto_ete_laudos", fields: ["nomeEte", "tipoUnidade", "licencaEte"] }],
       },
       {
         id: "ies-dbo",
@@ -398,7 +424,7 @@ const complianceSections: ComplianceSection[] = [
         title: "Comprovacao de Destinacao Final adequada em aterro sanitario licenciado.",
         penalty: "Destinacao final sem licenca ou sem contrato/MTR reduz a confiabilidade do IRS e pode bloquear a nota do criterio.",
         formIds: ["residuos_destinacao_final"],
-        requiredFields: [{ formId: "residuos_destinacao_final", fields: ["tipoDestinacao", "licencaAmbiental", "documentoLicenca", "documentoPesagem"] }],
+        requiredFields: [{ formId: "residuos_destinacao_final", fields: ["tipoDestinacao", "licencaAmbiental", "documentoLicenca", "documentoPesagem", "comprovanteRecebimentoAterro"] }],
       },
       {
         id: "irs-fr",
@@ -435,7 +461,7 @@ const complianceSections: ComplianceSection[] = [
         title: "Cadastro atualizado das UCs, incluindo Parque Natural Municipal de Nova Iguacu e Rebio Tingua.",
         penalty: "UC sem cadastro, area incidente ou mapa reduz a base de calculo ambiental do municipio.",
         formIds: ["uc_gestao"],
-        requiredFields: [{ formId: "uc_gestao", fields: ["nomeUc", "categoriaUc", "esferaUc", "areaMunicipioHa", "limiteVetor"] }],
+        requiredFields: [{ formId: "uc_gestao", fields: ["nomeUc", "categoriaUc", "esferaUc", "areaMunicipioHa", "atoCriacaoUc", "limiteVetor"] }],
       },
       {
         id: "uc-conselho",
@@ -475,21 +501,37 @@ const complianceSections: ComplianceSection[] = [
         title: "CONDEMA ativo com no minimo 3 atas ordinarias validadas e assinadas no ciclo.",
         penalty: "Regra de corte institucional: menos de 3 atas validadas cria risco alto de perda de pontuacao.",
         formIds: ["iqsmma_condema_fundo"],
-        requiredFields: [{ formId: "iqsmma_condema_fundo", fields: ["atasCondema", "atasUpload"] }],
+        requiredFields: [{ formId: "iqsmma_condema_fundo", fields: ["atasCondema", "dataReuniaoCondema", "assuntoReuniaoCondema", "atasUpload", "listasPresencaCondema"] }],
       },
       {
         id: "iq-fundo",
         title: "Fundo Municipal de Meio Ambiente instituido e cadastrado no Cadastro Estadual.",
         penalty: "Fundo nao instituido ou sem norma de repasse compromete a regularidade do IQSMMA.",
         formIds: ["iqsmma_condema_fundo"],
-        requiredFields: [{ formId: "iqsmma_condema_fundo", fields: ["leiFundo", "normaRepasse", "leiFundoUpload"] }],
+        requiredFields: [{ formId: "iqsmma_condema_fundo", fields: ["leiFundo", "normaRepasse", "leiFundoUpload", "normaRepasseUpload"] }],
       },
       {
         id: "iq-extratos",
         title: "Serie completa de 12 extratos bancarios mensais, de janeiro a dezembro, validada.",
         penalty: "Extratos incompletos rebaixam a conformidade do Fundo e geram pendencia documental impeditiva.",
         formIds: ["iqsmma_condema_fundo"],
-        requiredFields: [{ formId: "iqsmma_condema_fundo", fields: ["extratosUpload"] }],
+        requiredFields: [{
+          formId: "iqsmma_condema_fundo",
+          fields: [
+            "extratoJaneiro",
+            "extratoFevereiro",
+            "extratoMarco",
+            "extratoAbril",
+            "extratoMaio",
+            "extratoJunho",
+            "extratoJulho",
+            "extratoAgosto",
+            "extratoSetembro",
+            "extratoOutubro",
+            "extratoNovembro",
+            "extratoDezembro",
+          ],
+        }],
       },
     ],
   },
@@ -508,6 +550,20 @@ async function api<T>(url: string, options?: RequestInit): Promise<T> {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload?.detalhes || payload?.erro || "Falha na API");
   return payload as T;
+}
+
+async function uploadEvidence(config: DigitalFormConfig, field: FieldConfig, file: File) {
+  const formData = new FormData();
+  formData.append("arquivo", file);
+  formData.append("cicloIcmsId", String(cicloId));
+  formData.append("moduloOrigem", config.module);
+  formData.append("tipoDocumento", field.label);
+  formData.append("observacoes", `${config.title} - ${field.name}`);
+
+  return api<EvidenceUploadResponse>("/api/icms/documentos/evidencias", {
+    method: "POST",
+    body: formData,
+  });
 }
 
 function storageKey(formId: string) {
@@ -659,6 +715,8 @@ function CompletionDashboard() {
 
 function DigitalForm({ config }: { config: DigitalFormConfig }) {
   const [draft, setDraft] = useState<DraftRecord>(() => loadDraft(config.id));
+  const [uploadingField, setUploadingField] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState("");
   const didMount = useRef(false);
   const status = getFormStatus(config, draft);
   const checklist = getChecklist(config, draft);
@@ -687,6 +745,29 @@ function DigitalForm({ config }: { config: DigitalFormConfig }) {
   function saveDraft() {
     localStorage.setItem(storageKey(config.id), JSON.stringify(draft));
     window.dispatchEvent(new Event("draft-saved"));
+  }
+
+  async function handleFileChange(field: FieldConfig, file?: File) {
+    if (!file) {
+      updateField(field, "");
+      return;
+    }
+
+    setUploadError("");
+    setUploadingField(field.name);
+    try {
+      const payload = await uploadEvidence(config, field, file);
+      setDraft((current) => ({
+        ...current,
+        [field.name]: `${file.name} - Evidencia #${payload.resultado.documentoId}`,
+        [`${field.name}DocumentoId`]: String(payload.resultado.documentoId),
+      }));
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Falha ao enviar evidencia.");
+      updateField(field, file.name);
+    } finally {
+      setUploadingField(null);
+    }
   }
 
   return (
@@ -726,7 +807,7 @@ function DigitalForm({ config }: { config: DigitalFormConfig }) {
             {field.kind === "file" && (
               <input
                 type="file"
-                onChange={(event) => updateField(field, event.target.files?.[0]?.name || "")}
+                onChange={(event) => handleFileChange(field, event.target.files?.[0])}
               />
             )}
             {(field.kind === "text" || field.kind === "number" || field.kind === "date") && (
@@ -737,10 +818,13 @@ function DigitalForm({ config }: { config: DigitalFormConfig }) {
                 placeholder={field.placeholder}
               />
             )}
-            {field.kind === "file" && draft[field.name] && <small>Arquivo selecionado: {String(draft[field.name])}</small>}
+            {field.kind === "file" && uploadingField === field.name && <small>Enviando evidencia para documentos_evidencias...</small>}
+            {field.kind === "file" && draft[field.name] && <small>Arquivo registrado: {String(draft[field.name])}</small>}
           </label>
         ))}
       </div>
+
+      {uploadError && <div className="alert amber">{uploadError}. O nome do arquivo foi salvo no rascunho, mas revise a conexao antes do envio oficial.</div>}
 
       <div className="checklist">
         <h4>Checklist automatico de pendencias</h4>
