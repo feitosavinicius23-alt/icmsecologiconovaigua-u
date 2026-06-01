@@ -26,6 +26,23 @@ type DigitalFormConfig = {
 
 type DraftRecord = Record<string, string | boolean>;
 
+type ComplianceItem = {
+  id: string;
+  title: string;
+  penalty: string;
+  formIds: string[];
+  requiredFields?: Array<{ formId: string; fields: string[] }>;
+};
+
+type ComplianceSection = {
+  id: string;
+  title: string;
+  acronym: string;
+  weight: string;
+  tone: "green" | "amber" | "red" | "blue";
+  items: ComplianceItem[];
+};
+
 type EsgotoResultado = {
   pontuacaoFinalMunicipal: number;
   somaPercentualAtendido: number;
@@ -328,6 +345,156 @@ const digitalForms: DigitalFormConfig[] = [
   },
 ];
 
+const complianceSections: ComplianceSection[] = [
+  {
+    id: "ies",
+    title: "Criterio Esgoto",
+    acronym: "IES",
+    weight: "Peso 20%",
+    tone: "blue",
+    items: [
+      {
+        id: "ies-ete-licenca",
+        title: "Comprovacao de operacao de ETEs no territorio com licenca ambiental valida.",
+        penalty: "Sem ETE licenciada e comprovada, a pontuacao de tratamento de esgoto fica vulneravel a glosa tecnica no IES.",
+        formIds: ["esgoto_ete_laudos"],
+        requiredFields: [{ formId: "esgoto_ete_laudos", fields: ["nomeEte", "licencaEte"] }],
+      },
+      {
+        id: "ies-dbo",
+        title: "Relatorios de eficiencia de remocao de DBO conforme exigencia INEA/DZ-215.",
+        penalty: "Ausencia de laudos de DBO validados impede comprovar eficiencia e pode zerar o Fator RE da ETE.",
+        formIds: ["esgoto_ete_laudos", "esgoto_procon_agua"],
+        requiredFields: [
+          { formId: "esgoto_ete_laudos", fields: ["laudoDbo", "certificadoLaboratorio"] },
+          { formId: "esgoto_procon_agua", fields: ["raeUpload"] },
+        ],
+      },
+      {
+        id: "ies-vazao-populacao",
+        title: "Dados de vazao media (m3/dia) e populacao urbana de referencia atualizados.",
+        penalty: "Valores ausentes, zerados ou inconsistentes comprometem a formula de cobertura e podem gerar revisao manual pelo INEA.",
+        formIds: ["esgoto_ete_laudos"],
+        requiredFields: [{ formId: "esgoto_ete_laudos", fields: ["populacaoAtendida", "vazaoMedia"] }],
+      },
+      {
+        id: "ies-laudo-concessionaria",
+        title: "Upload do laudo tecnico de conformidade da concessionaria operadora.",
+        penalty: "Sem laudo da operadora, a SEMAM fica sem lastro documental para defender a informacao declarada.",
+        formIds: ["esgoto_ete_laudos", "esgoto_procon_agua"],
+        requiredFields: [{ formId: "esgoto_procon_agua", fields: ["proconComprovante", "raeUpload"] }],
+      },
+    ],
+  },
+  {
+    id: "irs",
+    title: "Criterio Residuos Solidos",
+    acronym: "IRS",
+    weight: "Peso 25%",
+    tone: "amber",
+    items: [
+      {
+        id: "irs-destinacao",
+        title: "Comprovacao de Destinacao Final adequada em aterro sanitario licenciado.",
+        penalty: "Destinacao final sem licenca ou sem contrato/MTR reduz a confiabilidade do IRS e pode bloquear a nota do criterio.",
+        formIds: ["residuos_destinacao_final"],
+        requiredFields: [{ formId: "residuos_destinacao_final", fields: ["tipoDestinacao", "licencaAmbiental", "documentoLicenca", "documentoPesagem"] }],
+      },
+      {
+        id: "irs-fr",
+        title: "Cadastro e comprovacao do Fator de Reciclagem (FR) por cooperativas de catadores.",
+        penalty: "Sem pesagens validadas de cooperativas, o FR tende a ficar zerado ou subestimado.",
+        formIds: ["residuos_coleta_seletiva"],
+        requiredFields: [{ formId: "residuos_coleta_seletiva", fields: ["cooperativa", "papelT", "plasticoT", "vidroT", "metalT"] }],
+      },
+      {
+        id: "irs-mtr-nf",
+        title: "Notas fiscais, MTRs ou laudos de triagem anexados.",
+        penalty: "Tonelagens sem documento comprobatorio nao devem ser usadas no calculo oficial do FR.",
+        formIds: ["residuos_coleta_seletiva"],
+        requiredFields: [{ formId: "residuos_coleta_seletiva", fields: ["notaFiscalMtr", "parceriaCatadores"] }],
+      },
+      {
+        id: "irs-sem-lixao",
+        title: "Inexistencia de vazadouros a ceu aberto ativos no municipio.",
+        penalty: "A existencia de lixao ativo e uma evidencia critica contra a regularidade da destinacao final.",
+        formIds: ["residuos_destinacao_final"],
+        requiredFields: [{ formId: "residuos_destinacao_final", fields: ["tipoDestinacao", "documentoContrato"] }],
+      },
+    ],
+  },
+  {
+    id: "iea-ifm",
+    title: "Criterio Unidades de Conservacao e Mananciais",
+    acronym: "IEA/IFM",
+    weight: "Peso 45%",
+    tone: "green",
+    items: [
+      {
+        id: "uc-cadastro",
+        title: "Cadastro atualizado das UCs, incluindo Parque Natural Municipal de Nova Iguacu e Rebio Tingua.",
+        penalty: "UC sem cadastro, area incidente ou mapa reduz a base de calculo ambiental do municipio.",
+        formIds: ["uc_gestao"],
+        requiredFields: [{ formId: "uc_gestao", fields: ["nomeUc", "categoriaUc", "esferaUc", "areaMunicipioHa", "limiteVetor"] }],
+      },
+      {
+        id: "uc-conselho",
+        title: "Comprovacao de Conselho Gestor instituido e ativo com atas do ano corrente.",
+        penalty: "Conselho inativo ou sem atas fragiliza a qualidade de gestao da UC.",
+        formIds: ["uc_gestao"],
+        requiredFields: [{ formId: "uc_gestao", fields: ["conselhoGestor", "atasConselhoUc"] }],
+      },
+      {
+        id: "uc-plano-manejo",
+        title: "Plano de Manejo oficial publicado e dentro do prazo de validade/atualizacao.",
+        penalty: "Plano inexistente ou vencido reduz a capacidade de comprovar gestao efetiva da unidade.",
+        formIds: ["uc_gestao"],
+        requiredFields: [{ formId: "uc_gestao", fields: ["planoManejo", "planoManejoUpload"] }],
+      },
+      {
+        id: "uc-delimitacao-fiscalizacao",
+        title: "Delimitacao geografica e relatorios de fiscalizacao/combate a incendios nas areas protegidas.",
+        penalty: "Sem mapa e relatorios operacionais, a evidencia territorial da conservacao fica incompleta.",
+        formIds: ["uc_gestao", "mananciais_abastecimento"],
+        requiredFields: [
+          { formId: "uc_gestao", fields: ["limiteVetor", "fotosInfra"] },
+          { formId: "mananciais_abastecimento", fields: ["mapaDrenagem"] },
+        ],
+      },
+    ],
+  },
+  {
+    id: "iqsmma",
+    title: "Criterio Governanca Ambiental",
+    acronym: "IQSMMA",
+    weight: "Peso 10%",
+    tone: "red",
+    items: [
+      {
+        id: "iq-condema",
+        title: "CONDEMA ativo com no minimo 3 atas ordinarias validadas e assinadas no ciclo.",
+        penalty: "Regra de corte institucional: menos de 3 atas validadas cria risco alto de perda de pontuacao.",
+        formIds: ["iqsmma_condema_fundo"],
+        requiredFields: [{ formId: "iqsmma_condema_fundo", fields: ["atasCondema", "atasUpload"] }],
+      },
+      {
+        id: "iq-fundo",
+        title: "Fundo Municipal de Meio Ambiente instituido e cadastrado no Cadastro Estadual.",
+        penalty: "Fundo nao instituido ou sem norma de repasse compromete a regularidade do IQSMMA.",
+        formIds: ["iqsmma_condema_fundo"],
+        requiredFields: [{ formId: "iqsmma_condema_fundo", fields: ["leiFundo", "normaRepasse", "leiFundoUpload"] }],
+      },
+      {
+        id: "iq-extratos",
+        title: "Serie completa de 12 extratos bancarios mensais, de janeiro a dezembro, validada.",
+        penalty: "Extratos incompletos rebaixam a conformidade do Fundo e geram pendencia documental impeditiva.",
+        formIds: ["iqsmma_condema_fundo"],
+        requiredFields: [{ formId: "iqsmma_condema_fundo", fields: ["extratosUpload"] }],
+      },
+    ],
+  },
+];
+
 function numberPt(value: number | null | undefined, decimals = 2) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
   return new Intl.NumberFormat("pt-BR", {
@@ -399,6 +566,30 @@ function loadDraft(formId: string): DraftRecord {
   } catch {
     return {};
   }
+}
+
+function getComplianceItemStatus(item: ComplianceItem) {
+  if (item.requiredFields?.length) {
+    return item.requiredFields.every((group) => {
+      const draft = loadDraft(group.formId);
+      return group.fields.every((field) => isFilled(draft[field]));
+    });
+  }
+
+  return item.formIds.every((formId) => {
+    const form = digitalForms.find((candidate) => candidate.id === formId);
+    return form ? getFormStatus(form, loadDraft(formId)) === "completo" : false;
+  });
+}
+
+function getComplianceSummary() {
+  const items = complianceSections.flatMap((section) => section.items);
+  const validated = items.filter(getComplianceItemStatus).length;
+  return {
+    total: items.length,
+    validated,
+    percent: Math.round((validated / items.length) * 100),
+  };
 }
 
 function saveCsv(filename: string, config: DigitalFormConfig, draft: DraftRecord) {
@@ -795,6 +986,108 @@ function UcPanel() {
   );
 }
 
+function CompliancePanel() {
+  const [tick, setTick] = useState(0);
+  const firstItem = complianceSections[0].items[0];
+  const [selectedItemId, setSelectedItemId] = useState(firstItem.id);
+
+  useEffect(() => {
+    const onDraftSaved = () => setTick((value) => value + 1);
+    window.addEventListener("draft-saved", onDraftSaved);
+    return () => window.removeEventListener("draft-saved", onDraftSaved);
+  }, []);
+
+  const summary = useMemo(() => getComplianceSummary(), [tick]);
+  const selectedItem = useMemo(
+    () => complianceSections.flatMap((section) => section.items).find((item) => item.id === selectedItemId) ?? firstItem,
+    [selectedItemId],
+  );
+  const selectedValidated = getComplianceItemStatus(selectedItem);
+
+  return (
+    <section className="panel compliance-panel">
+      <div className="section-header">
+        <div>
+          <h2>Central de Conformidade</h2>
+          <p>Checklist Nota Tecnica INEA para auditoria dos documentos e criterios do ICMS Ecologico.</p>
+        </div>
+        <button onClick={() => window.print()}>Gerar PDF da conformidade</button>
+      </div>
+
+      <div className="readiness-card">
+        <div>
+          <span>Indice de Prontidao do Municipio</span>
+          <strong>{summary.percent}%</strong>
+          <p>{summary.validated} de {summary.total} itens validados no sistema.</p>
+        </div>
+        <div className="readiness-track" aria-label="Progresso geral de conformidade">
+          <i style={{ width: `${summary.percent}%` }} />
+        </div>
+      </div>
+
+      <div className="compliance-layout">
+        <div className="compliance-sections">
+          {complianceSections.map((section) => {
+            const sectionValidated = section.items.filter(getComplianceItemStatus).length;
+            return (
+              <article key={section.id} className={`compliance-section ${section.tone}`}>
+                <div className="compliance-section-head">
+                  <div className="section-icon">{section.acronym}</div>
+                  <div>
+                    <h3>{section.title}</h3>
+                    <p>{section.acronym} - {section.weight}</p>
+                  </div>
+                  <Badge tone={sectionValidated === section.items.length ? "green" : sectionValidated > 0 ? "amber" : "red"}>
+                    {sectionValidated}/{section.items.length}
+                  </Badge>
+                </div>
+
+                <div className="compliance-items">
+                  {section.items.map((item) => {
+                    const validated = getComplianceItemStatus(item);
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={`compliance-item ${selectedItemId === item.id ? "active" : ""}`}
+                        onClick={() => setSelectedItemId(item.id)}
+                      >
+                        <span className={`status-dot ${validated ? "valid" : "pending"}`} />
+                        <span>{item.title}</span>
+                        <Badge tone={validated ? "green" : "amber"}>{validated ? "Validado no Sistema" : "Pendente"}</Badge>
+                      </button>
+                    );
+                  })}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+
+        <aside className="penalty-panel">
+          <span>Regra de Corte / Risco</span>
+          <h3>{selectedItem.title}</h3>
+          <Badge tone={selectedValidated ? "green" : "red"}>{selectedValidated ? "Evidencia localizada" : "Requer acao tecnica"}</Badge>
+          <p>{selectedItem.penalty}</p>
+          <div className="linked-forms">
+            <strong>Formularios relacionados</strong>
+            {selectedItem.formIds.map((formId) => {
+              const form = digitalForms.find((candidate) => candidate.id === formId);
+              const status = form ? getFormStatus(form, loadDraft(formId)) : "nao_iniciado";
+              return (
+                <div key={formId}>
+                  <span>{form?.title ?? formId}</span>
+                  <Badge tone={statusTone(status)}>{statusLabel(status)}</Badge>
+                </div>
+              );
+            })}
+          </div>
+        </aside>
+      </div>
+    </section>
+  );
+}
+
 function ConsolidadorPanel() {
   return (
     <section className="panel">
@@ -838,6 +1131,7 @@ function Table({ columns, rows }: { columns: string[]; rows: Array<Array<React.R
 function App() {
   const [tab, setTab] = useState("residuos");
   const tabs = [
+    ["conformidade", "Central de Conformidade"],
     ["residuos", "Residuos"],
     ["esgoto", "Esgoto"],
     ["uc", "UCs e Mananciais"],
@@ -859,6 +1153,7 @@ function App() {
       <nav className="tabs">
         {tabs.map(([id, label]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>{label}</button>)}
       </nav>
+      {tab === "conformidade" && <CompliancePanel />}
       {tab === "esgoto" && <EsgotoPanel />}
       {tab === "residuos" && <ResiduosPanel />}
       {tab === "uc" && <UcPanel />}
