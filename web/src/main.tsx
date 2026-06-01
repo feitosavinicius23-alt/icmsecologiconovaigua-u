@@ -115,6 +115,40 @@ const digitalForms: DigitalFormConfig[] = [
     ],
   },
   {
+    id: "residuos_pmgirs",
+    module: "residuos",
+    title: "Plano Municipal de Gestao Integrada de Residuos Solidos",
+    description:
+      "Comprova elaboracao, validade, aprovacao social e conteudo minimo do PMGIRS para bonificacao qualitativa do IQSMMA.",
+    spreadsheet: false,
+    fields: [
+      { name: "possuiPlano", label: "Municipio possui PMGIRS em versao final?", kind: "select", required: true, options: ["Sim", "Nao"] },
+      { name: "dataPlano", label: "Data do plano", kind: "date", required: true },
+      { name: "prazoRevisao", label: "Plano esta dentro do prazo de revisao?", kind: "select", required: true, options: ["Sim", "Nao"] },
+      { name: "abrangeTerritorio", label: "Abrange todo o territorio municipal?", kind: "select", required: true, options: ["Sim", "Nao", "Parcialmente"] },
+      { name: "controleSocial", label: "Houve audiencia, conselho ou consulta publica?", kind: "select", required: true, options: ["Audiencia publica", "Conselho municipal", "Consulta publica", "Nao comprovado"] },
+      { name: "planoUpload", label: "Upload do PMGIRS datado", kind: "file", required: true },
+      { name: "ataAprovacao", label: "Upload da ata/relatorio de participacao social", kind: "file", required: true },
+      { name: "matrizConteudo", label: "Upload da matriz de conteudo minimo", kind: "file", required: true },
+    ],
+  },
+  {
+    id: "residuos_oleo_vegetal",
+    module: "residuos",
+    title: "Coleta de Oleo Vegetal",
+    description:
+      "Registra acao complementar de coleta de oleo vegetal, pontos participantes, volume coletado e comprovantes de destinacao.",
+    spreadsheet: true,
+    fields: [
+      { name: "programaOleo", label: "Existe programa ou acao de coleta de oleo vegetal?", kind: "select", required: true, options: ["Sim", "Nao", "Em implantacao"] },
+      { name: "pontosColeta", label: "Quantidade de pontos de coleta", kind: "number", required: true },
+      { name: "volumeLitros", label: "Volume anual coletado (litros)", kind: "number", required: true },
+      { name: "destinador", label: "Empresa/cooperativa destinadora", kind: "text", required: true },
+      { name: "relatorioOleo", label: "Upload do relatorio anual de coleta", kind: "file", required: true },
+      { name: "comprovanteDestinacao", label: "Upload do comprovante de destinacao", kind: "file", required: true },
+    ],
+  },
+  {
     id: "esgoto_ete_laudos",
     module: "esgoto",
     title: "ETE, Licenca e Laudos de Eficiencia",
@@ -132,6 +166,99 @@ const digitalForms: DigitalFormConfig[] = [
     ],
   },
   {
+    id: "esgoto_pmsb",
+    module: "esgoto",
+    title: "Plano Municipal de Saneamento Basico",
+    description:
+      "Comprova o PMSB, seus quatro componentes, instituicao legal, audiencia publica, controle social e conteudo minimo.",
+    spreadsheet: false,
+    fields: [
+      { name: "possuiPmsb", label: "Possui PMSB em versao final?", kind: "select", required: true, options: ["Sim", "Nao"] },
+      { name: "dentroPrazo", label: "Dentro do prazo de revisao?", kind: "select", required: true, options: ["Sim", "Nao"] },
+      { name: "componentes", label: "Componentes contemplados", kind: "select", required: true, options: ["4 componentes", "2 ou 3 componentes", "Menos de 2 componentes"] },
+      { name: "instituidoLegalmente", label: "Instituido por Lei ou Decreto Municipal?", kind: "select", required: true, options: ["Sim", "Nao"] },
+      { name: "conteudoMinimo", label: "Percentual do conteudo minimo atendido (%)", kind: "number", required: true },
+      { name: "controleSocialPmsb", label: "Mecanismo de controle social", kind: "select", required: true, options: ["Conselho", "Audiencia publica", "Consulta publica", "Conferencia", "Nao comprovado"] },
+      { name: "pmsbUpload", label: "Upload do PMSB datado", kind: "file", required: true },
+      { name: "leiDecretoUpload", label: "Upload da Lei/Decreto de instituicao", kind: "file", required: true },
+      { name: "audienciaUpload", label: "Upload do relatorio/ata/lista de presenca", kind: "file", required: true },
+      { name: "matrizPmsbUpload", label: "Upload da matriz de conteudo minimo", kind: "file", required: true },
+    ],
+  },
+  {
+    id: "esgoto_procon_agua",
+    module: "esgoto",
+    title: "PROCON Agua e Autocontrole de Efluentes",
+    description:
+      "Organiza evidencias de vinculo ao PROCON Agua, RAE, laudos mensais e laboratorios credenciados pelo INEA.",
+    spreadsheet: true,
+    fields: [
+      { name: "empreendimento", label: "ETE/empreendimento vinculado", kind: "text", required: true },
+      { name: "vinculoProcon", label: "Possui vinculo no PROCON Agua?", kind: "select", required: true, options: ["Sim", "Nao"] },
+      { name: "raeEnviado", label: "RAE enviado regularmente?", kind: "select", required: true, options: ["Sim", "Nao", "Parcialmente"] },
+      { name: "mesesLaudo", label: "Quantidade de meses com laudo DBO", kind: "number", required: true },
+      { name: "proconComprovante", label: "Upload comprovante de vinculo PROCON Agua", kind: "file", required: true },
+      { name: "raeUpload", label: "Upload dos RAEs/relatorios de autocontrole", kind: "file", required: true },
+    ],
+  },
+  {
+    id: "uc_gestao",
+    module: "uc",
+    title: "Unidades de Conservacao e Qualidade de Gestao",
+    description:
+      "Registra dados de gestao do Parque Natural Municipal de Nova Iguacu, Rebio Tingua, APA Guandu e demais areas protegidas.",
+    spreadsheet: true,
+    fields: [
+      { name: "nomeUc", label: "Unidade de Conservacao", kind: "text", required: true },
+      { name: "categoriaUc", label: "Categoria", kind: "select", required: true, options: ["PI", "US"] },
+      { name: "esferaUc", label: "Esfera", kind: "select", required: true, options: ["Municipal", "Estadual", "Federal"] },
+      { name: "areaMunicipioHa", label: "Area incidente em Nova Iguacu (ha)", kind: "number", required: true },
+      { name: "planoManejo", label: "Status do Plano de Manejo", kind: "select", required: true, options: ["Atualizado", "Vencido", "Inexistente", "Em revisao"] },
+      { name: "conselhoGestor", label: "Status do Conselho Gestor", kind: "select", required: true, options: ["Ativo", "Inativo", "Inexistente", "Pendente"] },
+      { name: "infraestrutura", label: "Infraestrutura e equipamentos comprovados", kind: "textarea", required: false },
+      { name: "limiteVetor", label: "Upload limite vetorial/mapa da UC", kind: "file", required: true },
+      { name: "planoManejoUpload", label: "Upload do Plano de Manejo", kind: "file", required: true },
+      { name: "atasConselhoUc", label: "Upload atas do Conselho Gestor", kind: "file", required: true },
+      { name: "fotosInfra", label: "Upload fotos/relatorio de infraestrutura", kind: "file", required: true },
+    ],
+  },
+  {
+    id: "uc_mata_atlantica",
+    module: "uc",
+    title: "Plano Municipal da Mata Atlantica",
+    description:
+      "Comprova PMMA, aprovacao pelo Conselho Municipal de Meio Ambiente e acoes de conservacao/restauracao.",
+    spreadsheet: false,
+    fields: [
+      { name: "possuiPmma", label: "Possui PMMA?", kind: "select", required: true, options: ["Sim", "Nao", "Em elaboracao"] },
+      { name: "aprovadoConselho", label: "Aprovado pelo Conselho Municipal de Meio Ambiente?", kind: "select", required: true, options: ["Sim", "Nao"] },
+      { name: "dataAprovacao", label: "Data de aprovacao", kind: "date", required: true },
+      { name: "acoesRestauracao", label: "Acoes de conservacao/restauracao executadas", kind: "textarea", required: true },
+      { name: "pmmaUpload", label: "Upload do PMMA", kind: "file", required: true },
+      { name: "ataPmmaUpload", label: "Upload ata de aprovacao do PMMA", kind: "file", required: true },
+      { name: "relatorioAcoes", label: "Upload relatorio das acoes", kind: "file", required: true },
+    ],
+  },
+  {
+    id: "mananciais_abastecimento",
+    module: "uc",
+    title: "Mananciais de Abastecimento",
+    description:
+      "Registra bacias, pontos de captacao, area de drenagem municipal e documentos cartograficos para calculo do IrMA.",
+    spreadsheet: true,
+    fields: [
+      { name: "nomeBacia", label: "Bacia/manancial", kind: "text", required: true },
+      { name: "pontoCaptacao", label: "Ponto de captacao", kind: "text", required: true },
+      { name: "abasteceForaBacia", label: "Abastece municipios fora da bacia?", kind: "select", required: true, options: ["Sim", "Nao"] },
+      { name: "dependeTransposicao", label: "Depende de agua transposta?", kind: "select", required: true, options: ["Sim", "Nao", "Parcialmente"] },
+      { name: "areaDrenagemTotal", label: "Area drenagem total da bacia (km2)", kind: "number", required: true },
+      { name: "areaDrenagemMunicipal", label: "Area drenagem em Nova Iguacu (km2)", kind: "number", required: true },
+      { name: "fonteCartografica", label: "Fonte cartografica", kind: "text", required: true },
+      { name: "mapaDrenagem", label: "Upload mapa/shape/relatorio cartografico", kind: "file", required: true },
+      { name: "declaracaoCaptacao", label: "Upload declaracao do ponto de captacao", kind: "file", required: true },
+    ],
+  },
+  {
     id: "iqsmma_condema_fundo",
     module: "iqsmma",
     title: "CONDEMA e Fundo Municipal",
@@ -145,6 +272,44 @@ const digitalForms: DigitalFormConfig[] = [
       { name: "atasUpload", label: "Upload das atas do CONDEMA", kind: "file", required: true },
       { name: "leiFundoUpload", label: "Upload da lei/norma do Fundo", kind: "file", required: true },
       { name: "extratosUpload", label: "Upload dos 12 extratos mensais", kind: "file", required: true },
+    ],
+  },
+  {
+    id: "iqsmma_licenciamento",
+    module: "iqsmma",
+    title: "Licenciamento Ambiental de Impacto Local",
+    description:
+      "Formulario dos 15 itens do licenciamento municipal: equipe, infraestrutura, poder de policia, normas, licencas e manifestacoes CONEMA.",
+    spreadsheet: true,
+    fields: [
+      { name: "infraAdministrativa", label: "Infraestrutura administrativa comprovada?", kind: "select", required: true, options: ["Sim", "Nao"] },
+      { name: "equipeHabilitada", label: "Profissionais habilitados em numero compativel?", kind: "select", required: true, options: ["Sim", "Nao"] },
+      { name: "poderPolicia", label: "Servidores com poder de policia ambiental?", kind: "select", required: true, options: ["Sim", "Nao"] },
+      { name: "legislacaoPropria", label: "Legislacao suplementar propria?", kind: "select", required: true, options: ["Sim", "Nao"] },
+      { name: "requerimentosRecebidos", label: "Quantidade de requerimentos recebidos no ano", kind: "number", required: true },
+      { name: "licencasConcedidas", label: "Quantidade de instrumentos concedidos no ano", kind: "number", required: true },
+      { name: "infraUpload", label: "Upload descricao/evidencias de infraestrutura", kind: "file", required: true },
+      { name: "equipeUpload", label: "Upload relacao de equipe habilitada", kind: "file", required: true },
+      { name: "normasUpload", label: "Upload leis/normas de licenciamento e fiscalizacao", kind: "file", required: true },
+      { name: "licencasUpload", label: "Upload relacao de licencas concedidas", kind: "file", required: true },
+      { name: "conemaUpload", label: "Upload manifestacao CONEMA 95/2022", kind: "file", required: true },
+    ],
+  },
+  {
+    id: "iqsmma_educacao_ambiental",
+    module: "iqsmma",
+    title: "Programa Municipal de Educacao Ambiental",
+    description:
+      "Comprova programa, acoes executadas, publico atendido, periodicidade e documentos das atividades de educacao ambiental.",
+    spreadsheet: true,
+    fields: [
+      { name: "possuiPrograma", label: "Possui Programa Municipal de Educacao Ambiental?", kind: "select", required: true, options: ["Sim", "Nao", "Em elaboracao"] },
+      { name: "acoesExecutadas", label: "Quantidade de acoes executadas no ano", kind: "number", required: true },
+      { name: "publicoAtendido", label: "Publico atendido estimado", kind: "number", required: true },
+      { name: "periodicidade", label: "Periodicidade das atividades", kind: "select", required: true, options: ["Anual", "Semestral", "Mensal", "Pontual"] },
+      { name: "temas", label: "Temas trabalhados", kind: "textarea", required: true },
+      { name: "programaUpload", label: "Upload do programa/plano de educacao ambiental", kind: "file", required: true },
+      { name: "relatorioAtividades", label: "Upload relatorio com fotos/listas de presenca", kind: "file", required: true },
     ],
   },
   {
@@ -598,6 +763,26 @@ function IqsmmaPanel() {
   );
 }
 
+function UcPanel() {
+  return (
+    <section className="panel">
+      <div className="section-header">
+        <div>
+          <h2>Unidades de Conservacao e Mananciais</h2>
+          <p>Formularios de areas protegidas, qualidade de gestao, Mata Atlantica e Mananciais de Abastecimento.</p>
+        </div>
+        <button onClick={() => window.print()}>Gerar PDF do modulo</button>
+      </div>
+      <div className="grid three">
+        <MetricCard title="UCs prioritarias" value="3+" helper="Parque Natural Municipal, Rebio Tingua, APA Guandu e areas correlatas." />
+        <MetricCard title="Gestao documental" value="UC" helper="Plano de Manejo, Conselho Gestor, atas e infraestrutura." tone="green" />
+        <MetricCard title="Mananciais" value="IrMA" helper="Bacias, captacoes e areas de drenagem para abastecimento." />
+      </div>
+      <ModuleForms module="uc" />
+    </section>
+  );
+}
+
 function ConsolidadorPanel() {
   return (
     <section className="panel">
@@ -643,6 +828,7 @@ function App() {
   const tabs = [
     ["residuos", "Residuos"],
     ["esgoto", "Esgoto"],
+    ["uc", "UCs e Mananciais"],
     ["iqsmma", "IQSMMA"],
     ["ifca", "IFCA"],
   ];
@@ -663,6 +849,7 @@ function App() {
       </nav>
       {tab === "esgoto" && <EsgotoPanel />}
       {tab === "residuos" && <ResiduosPanel />}
+      {tab === "uc" && <UcPanel />}
       {tab === "iqsmma" && <IqsmmaPanel />}
       {tab === "ifca" && <ConsolidadorPanel />}
     </main>
