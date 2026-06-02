@@ -45,6 +45,19 @@ type ModuleIssue = {
   action: string;
 };
 
+type FormManagementSummary = {
+  form: DigitalFormConfig;
+  status: FormStatus;
+  records: SavedFormEntry[];
+  responsible: string;
+  deadline: string;
+  approval: string;
+  updatedAt: string;
+  issues: ModuleIssue[];
+  docsRequired: number;
+  docsFilled: number;
+};
+
 type PersistedFormPayload = {
   draft?: DraftRecord;
   records?: SavedFormEntry[];
@@ -1103,6 +1116,92 @@ function collectAllIssues() {
   return issues;
 }
 
+function moduleLabel(module: string) {
+  return {
+    residuos: "Residuos",
+    esgoto: "Esgoto",
+    uc: "UCs e Mananciais",
+    iqsmma: "IQSMMA",
+    ifca: "IFCA",
+  }[module] ?? module;
+}
+
+function moduleSource(module: string) {
+  return {
+    residuos: "Cooperativas, CTR/Aterro, SEMAM e SINIR/INEA",
+    esgoto: "Concessionaria, laboratorio, INEA e SEMAM",
+    uc: "SEMAM, orgaos gestores, cartografia e conselhos de UC",
+    iqsmma: "CONDEMA, Fundo Municipal, Contabilidade e Gabinete",
+    ifca: "SEMAM e gestor validador",
+  }[module] ?? "SEMAM";
+}
+
+function getFormManagementSummaries(): FormManagementSummary[] {
+  return digitalForms.map((form) => {
+    const draft = loadDraft(form.id);
+    const records = loadRecords(form.id);
+    const status = records.some((record) => record.status === "completo") ? "completo" : getFormStatus(form, draft);
+    const issues = collectAllIssues().filter((issue) => issue.formId === form.id);
+    const docs = form.fields.filter((field) => field.kind === "file");
+    const entries = records.length ? records.map((record) => record.draft) : [draft];
+    const docsFilled = docs.reduce((sum, field) => sum + (entries.some((entry) => isFilled(entry[field.name])) ? 1 : 0), 0);
+    const updatedAt = records[0]?.updatedAt ?? "";
+    return {
+      form,
+      status,
+      records,
+      responsible: String(draft.__responsavelModulo || "Sem responsavel"),
+      deadline: String(draft.__prazoModulo || ""),
+      approval: String(draft.__statusAprovacao || "Rascunho"),
+      updatedAt,
+      issues,
+      docsRequired: docs.length,
+      docsFilled,
+    };
+  });
+}
+
+function deadlineRisk(deadline: string) {
+  if (!deadline) return "Sem prazo";
+  const today = new Date();
+  const due = new Date(`${deadline}T23:59:59`);
+  const diffDays = Math.ceil((due.getTime() - today.getTime()) / 86400000);
+  if (diffDays < 0) return `Atrasado ha ${Math.abs(diffDays)} dia(s)`;
+  if (diffDays <= 7) return `Vence em ${diffDays} dia(s)`;
+  return `Vence em ${diffDays} dia(s)`;
+}
+
+function getKanbanColumn(summary: FormManagementSummary) {
+  if (summary.approval === "Aprovado para dossie") return "Aprovado para dossie";
+  if (summary.approval === "Validado pela SEMAM") return "Validado pela SEMAM";
+  if (summary.approval === "Aguardando validacao tecnica") return "Em validacao tecnica";
+  if (summary.status === "pendente_documento" || summary.approval === "Aguardando documento") return "Aguardando documento";
+  if (summary.status === "nao_iniciado") return "Nao iniciado";
+  return "Em preenchimento";
+}
+
+function getWeeklyReportText() {
+  const summaries = getFormManagementSummaries();
+  const issues = collectAllIssues();
+  const completed = summaries.filter((item) => item.status === "completo").length;
+  const overdue = summaries.filter((item) => item.deadline && deadlineRisk(item.deadline).startsWith("Atrasado"));
+  const critical = issues.filter((issue) => issue.severity === "critica");
+  return [
+    "# Relatorio semanal - ICMS Ecologico Nova Iguacu",
+    `Gerado em ${new Date().toLocaleString("pt-BR")}`,
+    "",
+    `Formularios completos: ${completed}/${summaries.length}`,
+    `Pendencias criticas: ${critical.length}`,
+    `Itens atrasados: ${overdue.length}`,
+    "",
+    "## Pendencias criticas",
+    ...(critical.length ? critical.map((issue) => `- ${issue.formTitle} (${issue.recordLabel}): ${issue.message} Acao: ${issue.action}`) : ["- Nenhuma pendencia critica identificada."]),
+    "",
+    "## Responsaveis e prazos",
+    ...summaries.map((item) => `- ${item.form.title}: ${item.responsible}; ${item.deadline ? deadlineRisk(item.deadline) : "sem prazo"}; status ${item.approval}.`),
+  ].join("\n");
+}
+
 function downloadText(filename: string, content: string, type = "text/plain;charset=utf-8") {
   const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
@@ -1113,9 +1212,14 @@ function downloadText(filename: string, content: string, type = "text/plain;char
   URL.revokeObjectURL(url);
 }
 
-function exportDossier() {
+function exportDossier(mode: "oficial" | "preliminar" = "oficial") {
   const generatedAt = new Date().toLocaleString("pt-BR");
   const issues = collectAllIssues();
+  const critical = issues.filter((issue) => issue.severity === "critica");
+  if (mode === "oficial" && critical.length) {
+    window.alert(`Envio oficial bloqueado: existem ${critical.length} pendencia(s) critica(s). Gere um dossie preliminar ou resolva os itens criticos.`);
+    return;
+  }
   const sections = digitalForms.map((form) => {
     const records = loadRecords(form.id);
     const draft = loadDraft(form.id);
@@ -1133,10 +1237,18 @@ function exportDossier() {
   });
 
   downloadText(
-    `dossie-icms-nova-iguacu-${new Date().toISOString().slice(0, 10)}.md`,
-    [`# Dossie ICMS Ecologico - Nova Iguacu`, `Gerado em ${generatedAt}`, "", `Pendencias identificadas: ${issues.length}`, "", ...sections].join("\n\n"),
+    `dossie-${mode}-icms-nova-iguacu-${new Date().toISOString().slice(0, 10)}.md`,
+    [`# Dossie ${mode.toUpperCase()} ICMS Ecologico - Nova Iguacu`, `Gerado em ${generatedAt}`, "", `Pendencias identificadas: ${issues.length}`, `Pendencias criticas: ${critical.length}`, "", ...sections].join("\n\n"),
     "text/markdown;charset=utf-8",
   );
+}
+
+function exportPreliminaryDossier() {
+  exportDossier("preliminar");
+}
+
+function exportOfficialDossier() {
+  exportDossier("oficial");
 }
 
 function parseCsv(text: string) {
@@ -1665,7 +1777,7 @@ function PendingCenterPanel() {
           <h2>Pendencias Para Envio</h2>
           <p>Conferencia operacional dos campos, documentos e regras de corte antes de montar o dossie final.</p>
         </div>
-        <button type="button" onClick={exportDossier}>Gerar dossie de conferencia</button>
+        <button type="button" onClick={exportPreliminaryDossier}>Gerar dossie de conferencia</button>
       </div>
       <div className="grid three">
         <MetricCard title="Pendencias totais" value={String(issues.length)} helper="Itens que exigem acao antes do envio." tone={issues.length ? "amber" : "green"} />
@@ -1693,6 +1805,159 @@ function PendingCenterPanel() {
         ))}
         {ordered.length === 0 && <div className="empty">Nenhuma pendencia encontrada. O dossie esta pronto para revisao final.</div>}
       </div>
+    </section>
+  );
+}
+
+function ManagementPanel() {
+  const [tick, setTick] = useState(0);
+  const [meetingMode, setMeetingMode] = useState(false);
+  useEffect(() => {
+    const onStorage = () => setTick((value) => value + 1);
+    window.addEventListener("draft-saved", onStorage);
+    return () => window.removeEventListener("draft-saved", onStorage);
+  }, []);
+
+  const summaries = useMemo(() => getFormManagementSummaries(), [tick]);
+  const issues = useMemo(() => collectAllIssues(), [tick]);
+  const complete = summaries.filter((item) => item.status === "completo").length;
+  const critical = issues.filter((issue) => issue.severity === "critica");
+  const high = issues.filter((issue) => issue.severity === "alta");
+  const overdue = summaries.filter((item) => item.deadline && deadlineRisk(item.deadline).startsWith("Atrasado"));
+  const blocked = critical.length > 0;
+  const kanbanColumns = ["Nao iniciado", "Em preenchimento", "Aguardando documento", "Em validacao tecnica", "Validado pela SEMAM", "Aprovado para dossie"];
+  const upcoming = summaries
+    .filter((item) => item.deadline)
+    .sort((a, b) => a.deadline.localeCompare(b.deadline))
+    .slice(0, 10);
+  const riskByModule = ["esgoto", "residuos", "uc", "iqsmma", "ifca"].map((module) => ({
+    module,
+    label: moduleLabel(module),
+    critical: issues.filter((issue) => issue.module === module && issue.severity === "critica").length,
+    high: issues.filter((issue) => issue.module === module && issue.severity === "alta").length,
+  }));
+
+  return (
+    <section className={`panel management-panel ${meetingMode ? "meeting-mode" : ""}`}>
+      <div className="section-header">
+        <div>
+          <h2>Gestao Executiva do Ciclo</h2>
+          <p>Painel do Secretario, acompanhamento por responsavel, prazos, riscos e liberacao do dossie.</p>
+        </div>
+        <div className="management-actions">
+          <button type="button" onClick={() => setMeetingMode((value) => !value)}>{meetingMode ? "Sair do modo reuniao" : "Modo reuniao"}</button>
+          <button type="button" onClick={() => downloadText("relatorio-semanal-icms.md", getWeeklyReportText(), "text/markdown;charset=utf-8")}>Relatorio semanal</button>
+          <button type="button" onClick={blocked ? exportPreliminaryDossier : exportOfficialDossier}>{blocked ? "Dossie preliminar" : "Liberar dossie oficial"}</button>
+        </div>
+      </div>
+
+      <div className={`status-footer ${blocked ? "red" : "green"}`}>
+        {blocked ? `ENVIO OFICIAL BLOQUEADO: ${critical.length} pendencia(s) critica(s).` : "PRONTO PARA LIBERACAO GERENCIAL DO DOSSIÊ OFICIAL."}
+      </div>
+
+      <div className="grid three">
+        <MetricCard title="Conclusao geral" value={`${Math.round((complete / summaries.length) * 100)}%`} helper={`${complete}/${summaries.length} formularios completos.`} tone={complete === summaries.length ? "green" : "amber"} />
+        <MetricCard title="Risco critico" value={String(critical.length)} helper="Pode cortar, zerar ou fragilizar criterio." tone={critical.length ? "red" : "green"} />
+        <MetricCard title="Atrasos" value={String(overdue.length)} helper="Modulos com prazo interno vencido." tone={overdue.length ? "red" : "green"} />
+      </div>
+
+      <div className="meeting-summary">
+        <article>
+          <span>Top pendencias da reuniao</span>
+          {(issues.slice(0, 5)).map((issue) => <p key={`${issue.formId}-${issue.message}`}>{issue.formTitle}: {issue.message}</p>)}
+          {issues.length === 0 && <p>Nenhuma pendencia para tratar.</p>}
+        </article>
+        <article>
+          <span>Responsaveis atrasados</span>
+          {overdue.slice(0, 5).map((item) => <p key={item.form.id}>{item.responsible} - {item.form.title}</p>)}
+          {overdue.length === 0 && <p>Nenhum prazo vencido.</p>}
+        </article>
+      </div>
+
+      <section className="management-section">
+        <h3>Kanban de Execucao</h3>
+        <div className="kanban-board">
+          {kanbanColumns.map((column) => (
+            <div key={column} className="kanban-column">
+              <strong>{column}</strong>
+              {summaries.filter((summary) => getKanbanColumn(summary) === column).map((summary) => (
+                <article key={summary.form.id}>
+                  <span>{moduleLabel(summary.form.module)}</span>
+                  <h4>{summary.form.title}</h4>
+                  <p>{summary.responsible}</p>
+                  <Badge tone={summary.issues.some((issue) => issue.severity === "critica") ? "red" : summary.issues.length ? "amber" : "green"}>
+                    {summary.issues.length} pend.
+                  </Badge>
+                </article>
+              ))}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="management-section">
+        <h3>Responsaveis, Prazos e Validacao</h3>
+        <Table
+          columns={["Modulo", "Responsavel", "Prazo", "Aprovacao", "Documentos", "Pendencias"]}
+          rows={summaries.map((summary) => [
+            summary.form.title,
+            summary.responsible,
+            summary.deadline ? deadlineRisk(summary.deadline) : "Sem prazo",
+            summary.approval,
+            `${summary.docsFilled}/${summary.docsRequired}`,
+            summary.issues.length,
+          ])}
+        />
+      </section>
+
+      <section className="management-section">
+        <h3>Agenda Anual de Obrigacoes</h3>
+        <div className="agenda-grid">
+          {[
+            ["Mensal", "Extratos do Fundo Municipal e repasses do ICMS Ecologico."],
+            ["Mensal", "Pesagens de cooperativas, notas fiscais e MTRs da coleta seletiva."],
+            ["Mensal/Semestral", "Laudos de ETE, DBO afluente/efluente e relatorios operacionais."],
+            ["Trimestral", "Reunioes ordinarias do CONDEMA ate atingir no minimo 3 atas validadas."],
+            ["Anual", "Mapas, planos de manejo, fiscalizacao e relatorios de UCs/mananciais."],
+            ["Fechamento", "Conferencia, aprovacao gerencial e geracao do dossie final."],
+          ].map(([period, text]) => <article key={`${period}-${text}`}><strong>{period}</strong><p>{text}</p></article>)}
+        </div>
+        <h4>Proximos prazos internos</h4>
+        <div className="alerts-list">
+          {upcoming.map((item) => <article className="risk baixo" key={item.form.id}><h3>{item.form.title}</h3><p>{deadlineRisk(item.deadline)} - {item.responsible}</p></article>)}
+          {upcoming.length === 0 && <div className="empty">Nenhum prazo interno cadastrado ainda.</div>}
+        </div>
+      </section>
+
+      <section className="management-section">
+        <h3>Risco por Receita/Pontuacao e Matriz de Documentos</h3>
+        <div className="grid two">
+          {riskByModule.map((item) => (
+            <MetricCard key={item.module} title={item.label} value={`${item.critical + item.high} riscos`} helper={`${item.critical} criticos e ${item.high} altos.`} tone={item.critical ? "red" : item.high ? "amber" : "green"} />
+          ))}
+        </div>
+        <Table
+          columns={["Origem", "Modulo", "Documentos previstos", "Documentos informados"]}
+          rows={summaries.map((summary) => [
+            moduleSource(summary.form.module),
+            summary.form.title,
+            summary.docsRequired,
+            summary.docsFilled,
+          ])}
+        />
+      </section>
+
+      <section className="management-section">
+        <h3>Historico de Decisoes Recentes</h3>
+        <div className="alerts-list">
+          {summaries.flatMap((summary) => loadStringList(auditKey(summary.form.id)).slice(0, 2).map((item) => ({ summary, item }))).slice(0, 12).map(({ summary, item }) => (
+            <article className="risk baixo" key={`${summary.form.id}-${item}`}>
+              <h3>{summary.form.title}</h3>
+              <p>{item}</p>
+            </article>
+          ))}
+        </div>
+      </section>
     </section>
   );
 }
@@ -2771,7 +3036,7 @@ function ConsolidadorPanel() {
           <h2>Consolidador IFCA</h2>
           <p>Relatorio executivo para fechamento do ciclo e preparacao do envio oficial.</p>
         </div>
-        <button onClick={exportDossier}>Exportar dossie</button>
+        <button onClick={exportOfficialDossier}>Exportar dossie oficial</button>
       </div>
       <div className="ifca-card">
         <span>Municipio</span>
@@ -2812,6 +3077,7 @@ function App() {
   const [profile, setProfile] = useState<UserProfile>(() => loadProfile());
   const [cycleYear, setCycleYear] = useState(String(new Date().getFullYear()));
   const tabs = [
+    ["gestao", "Gestao"],
     ["pendencias", "Pendencias"],
     ["conformidade", "Central de Conformidade"],
     ["modelos", "Modelos de Relatorios"],
@@ -2836,7 +3102,7 @@ function App() {
             <input value={cycleYear} onChange={(event) => setCycleYear(event.target.value)} />
           </label>
           <button type="button" onClick={() => setTab("ifca")}>Simular Pontuacao</button>
-          <button type="button" onClick={exportDossier}>Gerar Dossie Final</button>
+          <button type="button" onClick={exportOfficialDossier}>Gerar Dossie Final</button>
           <a href="/api/health" target="_blank" rel="noreferrer">API online</a>
         </div>
       </header>
@@ -2845,6 +3111,7 @@ function App() {
       <nav className="tabs">
         {tabs.map(([id, label]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>{label}</button>)}
       </nav>
+      {tab === "gestao" && <ManagementPanel />}
       {tab === "pendencias" && <PendingCenterPanel />}
       {tab === "conformidade" && <CompliancePanel />}
       {tab === "modelos" && <ReportModelsPanel />}

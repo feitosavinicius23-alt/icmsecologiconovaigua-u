@@ -438,6 +438,128 @@ input, select { display: block; width: 100%; height: 38px; margin-top: 5px; bord
   line-height: 1.25;
 }
 
+.management-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.management-section {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #e2e8f0;
+}
+.management-section h3,
+.management-section h4 {
+  margin: 0;
+  color: #0f172a;
+}
+.meeting-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+.meeting-summary article {
+  min-height: 118px;
+  border: 1px solid #dbe4ef;
+  border-radius: 10px;
+  padding: 12px;
+  background: #f8fafc;
+}
+.meeting-summary span {
+  display: block;
+  margin-bottom: 8px;
+  color: #047857;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+.meeting-summary p {
+  margin: 5px 0;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 700;
+}
+.kanban-board {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(150px, 1fr));
+  gap: 9px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.kanban-column {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 160px;
+  padding: 9px;
+  border: 1px solid #dbe4ef;
+  border-radius: 9px;
+  background: #f8fafc;
+}
+.kanban-column > strong {
+  color: #334155;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+.kanban-column article {
+  display: grid;
+  gap: 5px;
+  padding: 9px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: white;
+}
+.kanban-column article span {
+  color: #047857;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+.kanban-column h4 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 13px;
+  line-height: 1.25;
+}
+.kanban-column p {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+.agenda-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+}
+.agenda-grid article {
+  border: 1px solid #d1fae5;
+  border-radius: 9px;
+  padding: 10px;
+  background: #f0fdf4;
+}
+.agenda-grid strong {
+  color: #047857;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+.agenda-grid p {
+  margin: 5px 0 0;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.meeting-mode .tabs,
+.meeting-mode .access-panel,
+.meeting-mode .management-section:nth-of-type(n+4) {
+  display: none;
+}
+.meeting-mode .metric strong { font-size: 34px; }
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
@@ -889,6 +1011,7 @@ small { display: block; margin-top: 5px; color: #64748b; font-weight: 700; font-
   .record-list article .badge { grid-column: 1 / -1; justify-self: start; }
   .wizard-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .ifca-layout { grid-template-columns: 1fr; }
+  .meeting-summary, .agenda-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 850px) {
@@ -905,6 +1028,8 @@ small { display: block; margin-top: 5px; color: #64748b; font-weight: 700; font-
   .penalty-panel { position: static; }
   .report-letterhead, .signature-block { grid-template-columns: 1fr; flex-direction: column; align-items: flex-start; }
   .wizard-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .management-actions { justify-content: stretch; }
+  .management-actions button { width: 100%; }
 }
 
 @media (max-width: 520px) {
