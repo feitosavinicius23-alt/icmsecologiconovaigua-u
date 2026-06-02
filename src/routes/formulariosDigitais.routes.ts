@@ -69,6 +69,57 @@ router.get("/api/icms/formularios/respostas", async (req, res) => {
   }
 });
 
+router.delete("/api/icms/formularios/respostas", async (req, res) => {
+  try {
+    const cicloIcmsId = optionalInteger(req.query.cicloIcmsId, "cicloIcmsId", { min: 1 });
+    const usuarioId = optionalInteger(req.query.usuarioId, "usuarioId", { min: 1 });
+    if (!cicloIcmsId) throw badRequest("cicloIcmsId e obrigatorio para limpar os formularios.");
+
+    const resultado = await prisma.$transaction(async (tx) => {
+      const respostas = await tx.respostas_formularios.findMany({
+        where: { ciclo_icms_id: BigInt(cicloIcmsId) },
+        select: { id: true, formulario_codigo: true },
+      });
+      const respostaIds = respostas.map((item) => item.id);
+
+      if (respostaIds.length) {
+        await tx.checklists_formularios.deleteMany({
+          where: { resposta_formulario_id: { in: respostaIds } },
+        });
+        await tx.respostas_formularios.deleteMany({
+          where: { id: { in: respostaIds } },
+        });
+      }
+
+      await tx.historico_alteracoes.create({
+        data: {
+          usuario_id: toBigIntOrNull(usuarioId),
+          entidade: "respostas_formularios",
+          entidade_id: null,
+          acao: "LIMPAR_FORMULARIOS_CICLO",
+          depois_json: {
+            cicloIcmsId,
+            formulariosRemovidos: respostas.map((item) => item.formulario_codigo),
+            totalRemovido: respostas.length,
+          },
+        },
+      });
+
+      return { totalRemovido: respostas.length };
+    });
+
+    return res.json({
+      mensagem: "Dados dos formularios do ciclo limpos com sucesso.",
+      resultado: {
+        cicloIcmsId,
+        respostasRemovidas: resultado.totalRemovido,
+      },
+    });
+  } catch (error) {
+    return sendError(res, error, "Nao foi possivel limpar os dados dos formularios.");
+  }
+});
+
 router.get("/api/icms/formularios/dashboard/:cicloId", async (req, res) => {
   try {
     const cicloIcmsId = integerParam(req.params.cicloId, "cicloId", { min: 1 });

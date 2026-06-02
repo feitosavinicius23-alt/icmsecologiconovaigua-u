@@ -116,6 +116,12 @@ main { max-width: 1120px; margin: 0 auto; padding: 20px 14px 36px; }
 .alert.red { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
 .alert.amber { background: #fffbeb; color: #92400e; border: 1px solid #fcd34d; }
 .alert.green { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+button.danger {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+button.danger:hover { background: #fee2e2; }
 
 .table-wrap { max-width: 100%; overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 8px; margin-top: 14px; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }

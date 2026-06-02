@@ -1476,6 +1476,20 @@ async function saveServerDraft(config: DigitalFormConfig, draft: DraftRecord, st
   });
 }
 
+async function clearServerForms() {
+  return api<{ mensagem: string; resultado: { cicloIcmsId: number; respostasRemovidas: number } }>(`/api/icms/formularios/respostas?cicloIcmsId=${cicloId}`, {
+    method: "DELETE",
+  });
+}
+
+function clearLocalFormData() {
+  for (const form of digitalForms) {
+    localStorage.removeItem(storageKey(form.id));
+    localStorage.removeItem(recordsKey(form.id));
+  }
+  window.dispatchEvent(new Event("draft-saved"));
+}
+
 async function loadServerComments(formId: string) {
   return api<CommentResponse>(`/api/icms/formularios/${formId}/comentarios?cicloIcmsId=${cicloId}`);
 }
@@ -1812,6 +1826,8 @@ function PendingCenterPanel() {
 function ManagementPanel() {
   const [tick, setTick] = useState(0);
   const [meetingMode, setMeetingMode] = useState(false);
+  const [isClearingForms, setIsClearingForms] = useState(false);
+  const [clearMessage, setClearMessage] = useState("");
   useEffect(() => {
     const onStorage = () => setTick((value) => value + 1);
     window.addEventListener("draft-saved", onStorage);
@@ -1837,6 +1853,26 @@ function ManagementPanel() {
     high: issues.filter((issue) => issue.module === module && issue.severity === "alta").length,
   }));
 
+  async function clearImportedData() {
+    const confirmed = window.confirm(
+      "Tem certeza que deseja limpar os dados preenchidos dos formularios deste ciclo? Documentos enviados para evidencias nao serao apagados.",
+    );
+    if (!confirmed) return;
+
+    setIsClearingForms(true);
+    setClearMessage("");
+    try {
+      const result = await clearServerForms();
+      clearLocalFormData();
+      setTick((value) => value + 1);
+      setClearMessage(`${result.resultado.respostasRemovidas} formulario(s) do ciclo foram limpos. Recarregue a pagina para ver todos os modulos zerados.`);
+    } catch (error) {
+      setClearMessage(error instanceof Error ? error.message : "Nao foi possivel limpar os formularios.");
+    } finally {
+      setIsClearingForms(false);
+    }
+  }
+
   return (
     <section className={`panel management-panel ${meetingMode ? "meeting-mode" : ""}`}>
       <div className="section-header">
@@ -1848,8 +1884,13 @@ function ManagementPanel() {
           <button type="button" onClick={() => setMeetingMode((value) => !value)}>{meetingMode ? "Sair do modo reuniao" : "Modo reuniao"}</button>
           <button type="button" onClick={() => downloadText("relatorio-semanal-icms.md", getWeeklyReportText(), "text/markdown;charset=utf-8")}>Relatorio semanal</button>
           <button type="button" onClick={blocked ? exportPreliminaryDossier : exportOfficialDossier}>{blocked ? "Dossie preliminar" : "Liberar dossie oficial"}</button>
+          <button type="button" className="danger" onClick={clearImportedData} disabled={isClearingForms}>
+            {isClearingForms ? "Limpando..." : "Limpar dados preenchidos"}
+          </button>
         </div>
       </div>
+
+      {clearMessage && <div className={`alert ${clearMessage.includes("limpos") ? "green" : "red"}`}>{clearMessage}</div>}
 
       <div className={`status-footer ${blocked ? "red" : "green"}`}>
         {blocked ? `ENVIO OFICIAL BLOQUEADO: ${critical.length} pendencia(s) critica(s).` : "PRONTO PARA LIBERACAO GERENCIAL DO DOSSIÊ OFICIAL."}
