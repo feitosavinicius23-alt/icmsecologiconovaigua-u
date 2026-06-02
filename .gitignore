@@ -39,5 +39,6 @@ Thumbs.db
 
 # Temporary analysis artifacts
 nota-tecnica-extraida.txt
+tmp/
 
 .vercel
