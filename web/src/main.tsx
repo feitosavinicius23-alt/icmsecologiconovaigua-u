@@ -1144,6 +1144,90 @@ function parseCsv(text: string) {
   return rows.map((row) => row.split(/;|,/).map((cell) => cell.trim().replace(/^"|"$/g, "")));
 }
 
+const monthNames = ["Janeiro", "Fevereiro", "Marco", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+
+function normalizeHeader(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function rowValue(row: Record<string, unknown>, names: string[]) {
+  const normalized = Object.fromEntries(Object.entries(row).map(([key, value]) => [normalizeHeader(key), value]));
+  for (const name of names) {
+    const value = normalized[normalizeHeader(name)];
+    if (value !== undefined && value !== null && String(value).trim() !== "") return String(value).trim();
+  }
+  return "";
+}
+
+function parseSpreadsheetNumber(value: string, label: string, rowNumber: number) {
+  const normalized = value.replace(/\./g, "").replace(",", ".");
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new Error(`Linha ${rowNumber}: ${label} precisa ser numero maior ou igual a zero.`);
+  }
+  return parsed;
+}
+
+async function readSpreadsheetRows(file: File) {
+  const XLSX = await import("xlsx");
+  const buffer = await file.arrayBuffer();
+  const workbook = XLSX.read(buffer, { type: "array" });
+  const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+  return XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, { defval: "" });
+}
+
+async function importColetaSeletivaSpreadsheet(file: File, existingRecords: SavedFormEntry[]) {
+  const rows = await readSpreadsheetRows(file);
+  if (!rows.length) throw new Error("A planilha esta vazia.");
+
+  const now = new Date().toISOString();
+  const imported: SavedFormEntry[] = rows.map((row, index) => {
+    const rowNumber = index + 2;
+    const mesRaw = rowValue(row, ["mes", "mes_referencia", "mês", "referencia", "mes referencia"]);
+    const mes = monthNames.findIndex((name) => normalizeHeader(name) === normalizeHeader(mesRaw)) + 1 || Number(mesRaw);
+    if (!Number.isInteger(mes) || mes < 1 || mes > 12) {
+      throw new Error(`Linha ${rowNumber}: mes deve estar entre 1 e 12 ou conter o nome do mes.`);
+    }
+
+    const cooperativa = rowValue(row, ["cooperativa", "associacao", "razao social", "razaoSocial"]) || "Cooperativa nao informada";
+    const draft: DraftRecord = {
+      cooperativa,
+      cnpjCooperativa: rowValue(row, ["cnpj", "cnpj cooperativa", "cnpjCooperativa"]),
+      catadoresCooperados: rowValue(row, ["catadores", "numero catadores", "catadoresCooperados"]),
+      mesReferencia: String(mes),
+      papelT: String(parseSpreadsheetNumber(rowValue(row, ["papel", "papel t", "papel toneladas", "papelT"]), "Papel", rowNumber)),
+      plasticoT: String(parseSpreadsheetNumber(rowValue(row, ["plastico", "plastico t", "plastico toneladas", "plasticoT"]), "Plastico", rowNumber)),
+      vidroT: String(parseSpreadsheetNumber(rowValue(row, ["vidro", "vidro t", "vidro toneladas", "vidroT"]), "Vidro", rowNumber)),
+      metalT: String(parseSpreadsheetNumber(rowValue(row, ["metal", "metal t", "metal toneladas", "metalT"]), "Metal", rowNumber)),
+      tipoColeta: rowValue(row, ["tipo coleta", "tipoColeta"]) || "Domiciliar",
+      totalMensalReciclaveis: "",
+      mediaAnualReciclaveis: "",
+    };
+    const total = ["papelT", "plasticoT", "vidroT", "metalT"].reduce((sum, key) => sum + Number(draft[key] || 0), 0);
+    draft.totalMensalReciclaveis = total.toFixed(3);
+
+    return {
+      id: `residuos-coleta-${Date.now()}-${index}`,
+      label: `${cooperativa} - ${monthNames[mes - 1]}`,
+      status: getFormStatus(digitalForms.find((form) => form.id === "residuos_coleta_seletiva")!, draft),
+      draft,
+      createdAt: now,
+      updatedAt: now,
+    };
+  });
+
+  const importedMonths = new Set(imported.map((entry) => String(entry.draft.mesReferencia)));
+  if (importedMonths.size < 12) {
+    throw new Error(`A planilha possui ${importedMonths.size} mes(es). Para reduzir retrabalho, envie os 12 meses do ano.`);
+  }
+
+  return [...imported, ...existingRecords];
+}
+
 function statusLabel(status: FormStatus) {
   return {
     nao_iniciado: "Nao iniciado",
@@ -1513,6 +1597,51 @@ function ScoreSimulatorPanel() {
   );
 }
 
+function buildIfcaExplanation() {
+  const eteRecords = loadRecords("esgoto_ete_laudos");
+  const coletaRecords = loadRecords("residuos_coleta_seletiva");
+  const ucRecords = [...loadRecords("uc_gestao"), ...loadRecords("uc_municipais"), ...loadRecords("uc_rppn_privada")];
+  const condemaDraft = loadDraft("iqsmma_condema_fundo");
+  const dboEfficiencies = eteRecords
+    .map((entry) => Number(calculateDboEfficiency(String(entry.draft.dboAfluente ?? ""), String(entry.draft.dboEfluente ?? ""))))
+    .filter((value) => Number.isFinite(value));
+  const dboAverage = dboEfficiencies.length ? dboEfficiencies.reduce((sum, value) => sum + value, 0) / dboEfficiencies.length : 0;
+  const completeUcs = ucRecords.filter((entry) => entry.status === "completo").length;
+  const atas = Number(condemaDraft.atasCondema || 0);
+  const extratos = ["extratoJaneiro", "extratoFevereiro", "extratoMarco", "extratoAbril", "extratoMaio", "extratoJunho", "extratoJulho", "extratoAgosto", "extratoSetembro", "extratoOutubro", "extratoNovembro", "extratoDezembro"].filter((field) => isFilled(condemaDraft[field])).length;
+
+  return [
+    `A nota simulada de Nova Iguacu e formada pela soma ponderada dos criterios do ICMS Ecologico. No eixo de esgoto, o municipio cadastrou ${eteRecords.length} Estacao(oes) de Tratamento de Esgoto. A eficiencia media estimada de remocao de DBO esta em ${numberPt(dboAverage)}%, calculada pela diferenca entre DBO afluente e efluente informadas nos laudos. Quando essa eficiencia fica acima do patamar tecnico exigido, o sistema indica melhor aderencia a diretriz DZ-215 do INEA.`,
+    `No eixo de residuos, existem ${coletaRecords.length} registro(s) mensais de coleta seletiva importados ou digitados. Esses dados sustentam o Fator de Reciclagem, pois demonstram as toneladas de papel, plastico, vidro e metal comercializadas ou destinadas por cooperativas.`,
+    `No eixo de areas protegidas e mananciais, ha ${ucRecords.length} cadastro(s) de UC/RPPN/manancial e ${completeUcs} registro(s) completos. A qualidade da pontuacao depende da presenca de ato de criacao, mapa, plano de manejo, conselho gestor ativo e evidencias de gestao.`,
+    `No IQSMMA, o sistema encontrou ${atas || 0} ata(s) do CONDEMA informada(s) e ${extratos}/12 extratos mensais do Fundo Municipal anexados. Para reduzir risco de corte institucional, o ideal e manter pelo menos 3 atas ordinarias validadas e a serie completa de extratos bancarios.`,
+  ];
+}
+
+function IfcaExplanationCard() {
+  const [open, setOpen] = useState(true);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const onStorage = () => setTick((value) => value + 1);
+    window.addEventListener("draft-saved", onStorage);
+    return () => window.removeEventListener("draft-saved", onStorage);
+  }, []);
+  const paragraphs = useMemo(() => buildIfcaExplanation(), [tick]);
+
+  return (
+    <aside className="ifca-explanation">
+      <button type="button" onClick={() => setOpen((value) => !value)}>{open ? "Ocultar explicacao" : "Ver explicacao"}</button>
+      {open && (
+        <div>
+          <span>Memoria de calculo em linguagem simples</span>
+          <h3>Como o sistema chegou na leitura do IFCA</h3>
+          {paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
+        </div>
+      )}
+    </aside>
+  );
+}
+
 function PendingCenterPanel() {
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -1574,6 +1703,8 @@ function DigitalForm({ config }: { config: DigitalFormConfig }) {
   const [activeRecordId, setActiveRecordId] = useState<string | null>(null);
   const [uploadingField, setUploadingField] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState("");
+  const [importError, setImportError] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
   const [comment, setComment] = useState("");
   const [serverComments, setServerComments] = useState<string[]>([]);
   const [syncStatus, setSyncStatus] = useState<"local" | "syncing" | "synced" | "error">("local");
@@ -1810,6 +1941,18 @@ function DigitalForm({ config }: { config: DigitalFormConfig }) {
     await persistRecord(nextRecords, draft, `${imported.length} registro(s) importado(s) por CSV`);
   }
 
+  async function handleColetaSpreadsheet(file?: File) {
+    if (!file) return;
+    setImportError("");
+    try {
+      const nextRecords = await importColetaSeletivaSpreadsheet(file, records);
+      await persistRecord(nextRecords, draft, "Planilha anual de coleta seletiva importada");
+      setSyncMessage("Planilha importada com sucesso. Os 12 meses foram cadastrados como registros.");
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : "Nao foi possivel importar a planilha.");
+    }
+  }
+
   return (
     <article className="digital-form">
       <div className="digital-form-header">
@@ -1858,6 +2001,32 @@ function DigitalForm({ config }: { config: DigitalFormConfig }) {
         )}
       </section>
 
+      {config.id === "residuos_coleta_seletiva" && (
+        <section
+          className={`drop-import ${isDragging ? "dragging" : ""}`}
+          onDragOver={(event) => {
+            event.preventDefault();
+            setIsDragging(true);
+          }}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={(event) => {
+            event.preventDefault();
+            setIsDragging(false);
+            handleColetaSpreadsheet(event.dataTransfer.files?.[0]);
+          }}
+        >
+          <div>
+            <strong>Importar pesagem anual da coleta seletiva</strong>
+            <p>Arraste uma planilha .csv ou .xlsx com colunas: mes, cooperativa, cnpj, catadores, papel, plastico, vidro e metal.</p>
+          </div>
+          <label>
+            Importar Planilha
+            <input type="file" accept=".csv,.xlsx,.xls,text/csv" onChange={(event) => handleColetaSpreadsheet(event.target.files?.[0])} />
+          </label>
+          {importError && <div className="alert red">{importError}</div>}
+        </section>
+      )}
+
       <section className="workflow-box">
         <label>
           Responsavel pelo preenchimento
@@ -1885,7 +2054,7 @@ function DigitalForm({ config }: { config: DigitalFormConfig }) {
           <label key={field.name} className={field.kind === "textarea" || field.kind === "file" ? "wide" : ""}>
             {field.label}
             {field.kind === "select" && (
-              <select value={String(draft[field.name] ?? "")} onChange={(event) => updateField(field, event.target.value)}>
+              <select className={field.required ? (isFilled(draft[field.name]) ? "field-valid" : "field-invalid") : ""} value={String(draft[field.name] ?? "")} onChange={(event) => updateField(field, event.target.value)}>
                 <option value="">Selecione</option>
                 {field.options?.map((option) => (
                   <option key={option} value={option}>
@@ -1895,7 +2064,7 @@ function DigitalForm({ config }: { config: DigitalFormConfig }) {
               </select>
             )}
             {field.kind === "textarea" && (
-              <textarea value={String(draft[field.name] ?? "")} onChange={(event) => updateField(field, event.target.value)} placeholder={field.placeholder} />
+              <textarea className={field.required ? (isFilled(draft[field.name]) ? "field-valid" : "field-invalid") : ""} value={String(draft[field.name] ?? "")} onChange={(event) => updateField(field, event.target.value)} placeholder={field.placeholder} />
             )}
             {field.kind === "checkbox" && (
               <span className="check-row">
@@ -1906,17 +2075,20 @@ function DigitalForm({ config }: { config: DigitalFormConfig }) {
             {field.kind === "file" && (
               <input
                 type="file"
+                className={field.required ? (isFilled(draft[field.name]) ? "field-valid" : "field-invalid") : ""}
                 onChange={(event) => handleFileChange(field, event.target.files?.[0])}
               />
             )}
             {(field.kind === "text" || field.kind === "number" || field.kind === "date") && (
               <input
                 type={field.kind}
+                className={field.required ? (isFilled(draft[field.name]) ? "field-valid" : "field-invalid") : ""}
                 value={String(draft[field.name] ?? "")}
                 onChange={(event) => updateField(field, event.target.value)}
                 placeholder={field.placeholder}
               />
             )}
+            {field.required && !isFilled(draft[field.name]) && <small className="field-help">Campo obrigatorio para concluir este registro.</small>}
             {field.kind === "file" && uploadingField === field.name && <small>Enviando evidencia para documentos_evidencias...</small>}
             {field.kind === "file" && draft[field.name] && <small>Arquivo registrado: {String(draft[field.name])}</small>}
           </label>
@@ -2611,7 +2783,10 @@ function ConsolidadorPanel() {
         <MetricCard title="Residuos" value="IRS" helper="Fator de Reciclagem e coleta seletiva." />
         <MetricCard title="Institucional" value="IQSMMA" helper="CONDEMA e Fundo Municipal." />
       </div>
-      <ScoreSimulatorPanel />
+      <div className="ifca-layout">
+        <ScoreSimulatorPanel />
+        <IfcaExplanationCard />
+      </div>
       <ModuleForms module="ifca" />
       <div className="status-footer green">PRONTO PARA OPERACAO ASSISTIDA DO MVP</div>
     </section>

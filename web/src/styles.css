@@ -314,6 +314,97 @@ input, select { display: block; width: 100%; height: 38px; margin-top: 5px; bord
 .issue strong { color: #0f172a; font-size: 13px; }
 .issue span { color: #475569; font-size: 12px; font-weight: 700; }
 
+.drop-import {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  margin: 12px 0;
+  padding: 14px;
+  border: 2px dashed #93c5fd;
+  border-radius: 10px;
+  background: #eff6ff;
+}
+.drop-import.dragging {
+  border-color: #047857;
+  background: #ecfdf5;
+}
+.drop-import strong { color: #0f172a; }
+.drop-import p {
+  margin: 4px 0 0;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 700;
+}
+.drop-import label {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 38px;
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: white;
+  background: #2563eb;
+  cursor: pointer;
+}
+.drop-import input { display: none; }
+
+.field-valid {
+  border-color: #86efac !important;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, .10);
+}
+.field-invalid {
+  border-color: #fecaca !important;
+  background: #fff7f7;
+}
+.field-help {
+  color: #991b1b;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.ifca-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
+  gap: 12px;
+  align-items: start;
+}
+.ifca-layout .simulator-panel { margin-top: 0; }
+.ifca-explanation {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  padding: 13px;
+  background: #f8fafc;
+}
+.ifca-explanation button {
+  justify-self: start;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 11px;
+  color: white;
+  background: #1d4ed8;
+  font-weight: 900;
+}
+.ifca-explanation span {
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+.ifca-explanation h3 {
+  margin: 6px 0;
+  color: #0f172a;
+  font-size: 17px;
+}
+.ifca-explanation p {
+  margin: 8px 0 0;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .wizard-steps {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -797,12 +888,13 @@ small { display: block; margin-top: 5px; color: #64748b; font-weight: 700; font-
   .record-list article { grid-template-columns: minmax(0, 1fr) auto auto; }
   .record-list article .badge { grid-column: 1 / -1; justify-self: start; }
   .wizard-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ifca-layout { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 850px) {
   main { padding: 12px 8px 28px; }
   .hero, .section-header { flex-direction: column; align-items: stretch; }
-  .grid.three, .grid.two, .form-card, .completion-panel, .form-grid, .readiness-card, .compliance-layout, .access-panel, .workflow-box { grid-template-columns: 1fr; }
+  .grid.three, .grid.two, .form-card, .completion-panel, .form-grid, .readiness-card, .compliance-layout, .access-panel, .workflow-box, .drop-import { grid-template-columns: 1fr; }
   .hero { min-height: 220px; padding: 16px; }
   .hero h1 { font-size: 30px; }
   .hero-actions { justify-content: flex-start; }
@@ -817,7 +909,7 @@ small { display: block; margin-top: 5px; color: #64748b; font-weight: 700; font-
 
 @media (max-width: 520px) {
   .panel, .digital-form, .official-report { padding: 10px; }
-  .tabs button, .form-actions button, .record-actions button, .record-list button, .import-button { width: 100%; justify-content: center; }
+  .tabs button, .form-actions button, .record-actions button, .record-list button, .import-button, .drop-import label, .ifca-explanation button { width: 100%; justify-content: center; }
   .record-actions, .form-actions { justify-content: stretch; }
   .grid.three, .grid.two { grid-template-columns: 1fr; }
   .wizard-steps { grid-template-columns: 1fr; }
